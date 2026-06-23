@@ -52,6 +52,10 @@ function Get-TokenMonitorSettingsPath {
     return (Join-Path (Get-TokenMonitorAppDir) 'settings.json')
 }
 
+function Get-TokenMonitorQuotaCachePath {
+    return (Join-Path (Get-TokenMonitorAppDir) 'quota-cache.json')
+}
+
 function New-ProviderConfig {
     param(
         [Parameter(Mandatory = $true)][string]$Id,
@@ -372,7 +376,7 @@ function New-DefaultTokenSettings {
     $defaultClaudeCommand = Get-DefaultClaudeCommand
 
     return [ordered]@{
-        RefreshSeconds = 600
+        RefreshSeconds = 60
         MaxFileSizeMB = 20
         ShowStatusStrip = $true
         Providers = @(
@@ -447,8 +451,15 @@ function Read-TokenMonitorSettings {
         return $settings
     }
 
+    $migrated = $false
+
     if (-not (Get-Member -InputObject $settings -Name RefreshSeconds -MemberType NoteProperty -ErrorAction SilentlyContinue)) {
-        $settings | Add-Member -NotePropertyName RefreshSeconds -NotePropertyValue 600
+        $settings | Add-Member -NotePropertyName RefreshSeconds -NotePropertyValue 60
+        $migrated = $true
+    }
+    elseif ([int]$settings.RefreshSeconds -eq 600) {
+        $settings.RefreshSeconds = 60
+        $migrated = $true
     }
     if (-not (Get-Member -InputObject $settings -Name MaxFileSizeMB -MemberType NoteProperty -ErrorAction SilentlyContinue)) {
         $settings | Add-Member -NotePropertyName MaxFileSizeMB -NotePropertyValue 20
@@ -456,8 +467,6 @@ function Read-TokenMonitorSettings {
     if (-not (Get-Member -InputObject $settings -Name ShowStatusStrip -MemberType NoteProperty -ErrorAction SilentlyContinue)) {
         $settings | Add-Member -NotePropertyName ShowStatusStrip -NotePropertyValue $true
     }
-
-    $migrated = $false
 
     # Remove the old antigravity-client provider if present (merging it back to antigravity)
     $filteredProviders = New-Object System.Collections.Generic.List[object]
@@ -558,6 +567,16 @@ function ConvertTo-TokenDateTime {
         return $null
     }
 
+    $jsonDateMatch = [regex]::Match($text, '^/Date\((?<ms>-?\d+)(?:[+-]\d+)?\)/$')
+    if ($jsonDateMatch.Success) {
+        try {
+            return [DateTimeOffset]::FromUnixTimeMilliseconds([int64]$jsonDateMatch.Groups['ms'].Value).UtcDateTime
+        }
+        catch {
+            return $null
+        }
+    }
+
     $number = 0.0
     if ([double]::TryParse($text, [Globalization.NumberStyles]::Any, [Globalization.CultureInfo]::InvariantCulture, [ref]$number)) {
         try {
@@ -579,6 +598,16 @@ function ConvertTo-TokenDateTime {
     }
 
     return $null
+}
+
+function ConvertTo-TokenIsoDateTimeString {
+    param($Value)
+
+    $dt = ConvertTo-TokenDateTime -Value $Value
+    if ($null -eq $dt) {
+        return $null
+    }
+    return ([DateTime]$dt).ToUniversalTime().ToString('o')
 }
 
 function Get-ObjectProperties {
@@ -1065,6 +1094,153 @@ function Get-RemainingPercentFromRateLimit {
     return [Math]::Max(0, [Math]::Min(100, [Math]::Round(100.0 - [double]$UsedPercent, 1)))
 }
 
+function Read-TokenMonitorQuotaCache {
+    $path = Get-TokenMonitorQuotaCachePath
+    if (-not (Test-Path -LiteralPath $path)) {
+        return [pscustomobject]@{}
+    }
+
+    try {
+        return (Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json)
+    }
+    catch {
+        return [pscustomobject]@{}
+    }
+}
+
+function Save-TokenMonitorQuotaCache {
+    param([Parameter(Mandatory = $true)]$Cache)
+
+    $path = Get-TokenMonitorQuotaCachePath
+    $dir = Split-Path -Parent $path
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $json = $Cache | ConvertTo-Json -Depth 8
+    Set-Content -LiteralPath $path -Value $json -Encoding UTF8
+}
+
+function Get-TokenMonitorCacheProvider {
+    param(
+        [Parameter(Mandatory = $true)]$Cache,
+        [Parameter(Mandatory = $true)][string]$ProviderId
+    )
+
+    $prop = Get-ObjectProperties -Value $Cache | Where-Object { $_.Name -ieq $ProviderId } | Select-Object -First 1
+    if ($null -eq $prop) {
+        return $null
+    }
+    return $prop.Value
+}
+
+function Set-TokenMonitorCacheProvider {
+    param(
+        [Parameter(Mandatory = $true)]$Cache,
+        [Parameter(Mandatory = $true)][string]$ProviderId,
+        [Parameter(Mandatory = $true)]$Value
+    )
+
+    if (Get-Member -InputObject $Cache -Name $ProviderId -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+        $Cache.$ProviderId = $Value
+    }
+    else {
+        $Cache | Add-Member -NotePropertyName $ProviderId -NotePropertyValue $Value
+    }
+}
+
+function Get-EstimatedRemainingPercentFromLastVisible {
+    param(
+        $RemainingPercent,
+        $ObservedAtUtc,
+        $ResetAtUtc,
+        [Parameter(Mandatory = $true)][DateTime]$NowUtc
+    )
+
+    $remaining = ConvertTo-TokenDoubleOrNull -Value $RemainingPercent
+    if ($null -eq $remaining) {
+        return $null
+    }
+
+    $observedUtc = ConvertTo-TokenDateTime -Value $ObservedAtUtc
+    $resetUtc = ConvertTo-TokenDateTime -Value $ResetAtUtc
+    $remaining = [Math]::Max(0.0, [Math]::Min(100.0, [double]$remaining))
+
+    if ($null -eq $observedUtc -or $null -eq $resetUtc) {
+        return [Math]::Round($remaining, 1)
+    }
+
+    if ($NowUtc -ge ([DateTime]$resetUtc)) {
+        return 100.0
+    }
+    if ($NowUtc -le ([DateTime]$observedUtc) -or ([DateTime]$resetUtc -le [DateTime]$observedUtc)) {
+        return [Math]::Round($remaining, 1)
+    }
+
+    $ratio = (($NowUtc - [DateTime]$observedUtc).TotalSeconds / (([DateTime]$resetUtc - [DateTime]$observedUtc).TotalSeconds))
+    return [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round($remaining + ((100.0 - $remaining) * $ratio), 1)))
+}
+
+function Get-EstimatedAntigravityQuotaFromCache {
+    param(
+        [Parameter(Mandatory = $true)]$Cache,
+        [Parameter(Mandatory = $true)][DateTime]$NowUtc
+    )
+
+    $cached = Get-TokenMonitorCacheProvider -Cache $Cache -ProviderId 'antigravity'
+    if ($null -eq $cached) {
+        return $null
+    }
+
+    $observedAtUtc = ConvertTo-TokenDateTime -Value $cached.ObservedAtUtc
+    if ($null -eq $observedAtUtc) {
+        return $null
+    }
+
+    $fiveResetAtUtc = ConvertTo-TokenDateTime -Value $cached.FiveHourResetAtUtc
+    $weeklyResetAtUtc = ConvertTo-TokenDateTime -Value $cached.WeeklyResetAtUtc
+    $fiveRemaining = Get-EstimatedRemainingPercentFromLastVisible -RemainingPercent $cached.FiveHourRemainingPercent -ObservedAtUtc $observedAtUtc -ResetAtUtc $fiveResetAtUtc -NowUtc $NowUtc
+    $weeklyRemaining = Get-EstimatedRemainingPercentFromLastVisible -RemainingPercent $cached.WeeklyRemainingPercent -ObservedAtUtc $observedAtUtc -ResetAtUtc $weeklyResetAtUtc -NowUtc $NowUtc
+
+    if ($null -eq $fiveRemaining -and $null -eq $weeklyRemaining) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        ObservedAtUtc = [DateTime]$observedAtUtc
+        FiveHourRemainingPercent = $fiveRemaining
+        WeeklyRemainingPercent = $weeklyRemaining
+        FiveHourResetAtUtc = $fiveResetAtUtc
+        WeeklyResetAtUtc = $weeklyResetAtUtc
+        FiveHourResetHours = Get-ResetHoursFromAt -Value $fiveResetAtUtc -NowUtc $NowUtc
+        WeeklyResetHours = Get-ResetHoursFromAt -Value $weeklyResetAtUtc -NowUtc $NowUtc
+    }
+}
+
+function Update-AntigravityQuotaCache {
+    param(
+        [Parameter(Mandatory = $true)]$Cache,
+        [Parameter(Mandatory = $true)][DateTime]$NowUtc,
+        $FiveHourRemainingPercent,
+        $WeeklyRemainingPercent,
+        $FiveHourResetAt,
+        $WeeklyResetAt
+    )
+
+    if ($null -eq $FiveHourRemainingPercent -and $null -eq $WeeklyRemainingPercent) {
+        return
+    }
+
+    Set-TokenMonitorCacheProvider -Cache $Cache -ProviderId 'antigravity' -Value ([pscustomobject]@{
+        ObservedAtUtc = $NowUtc.ToString('o')
+        FiveHourRemainingPercent = $FiveHourRemainingPercent
+        WeeklyRemainingPercent = $WeeklyRemainingPercent
+        FiveHourResetAtUtc = ConvertTo-TokenIsoDateTimeString -Value $FiveHourResetAt
+        WeeklyResetAtUtc = ConvertTo-TokenIsoDateTimeString -Value $WeeklyResetAt
+    })
+    Save-TokenMonitorQuotaCache -Cache $Cache
+}
+
 function Test-TokenProviderStatusOk {
     param($Status)
 
@@ -1322,6 +1498,7 @@ function Get-TokenUsageSnapshot {
     }
     $maxFileBytes = [int64]$maxFileSizeMB * 1024L * 1024L
     $providers = New-Object System.Collections.Generic.List[object]
+    $quotaCache = Read-TokenMonitorQuotaCache
 
     foreach ($provider in @($Settings.Providers)) {
         $enabled = $true
@@ -1378,6 +1555,10 @@ function Get-TokenUsageSnapshot {
             $weeklyUsedDisplay = Format-TokenCount -Value $weeklyUsed
             $fiveHourResetHours = $null
             $weeklyResetHours = $null
+            $fiveHourResetAtUtc = $null
+            $weeklyResetAtUtc = $null
+            $lastVisibleLocal = $null
+            $isEstimatedFromCache = $false
             
             $commandStatus = 'Command OK'
             $commandData = Invoke-TokenProviderCommand -Provider $provider
@@ -1408,11 +1589,13 @@ function Get-TokenUsageSnapshot {
                     $commandFiveResetHours = Get-PropertyByNames -Object $commandData -Names @('fiveHourResetHours', 'fiveHourResetsInHours', 'five_hour_reset_hours', 'reset5hHours', 'resets5hInHours')
                     $commandWeekResetHours = Get-PropertyByNames -Object $commandData -Names @('weeklyResetHours', 'weeklyResetsInHours', 'weekResetHours', 'sevenDayResetHours', 'sevenDayResetsInHours', 'weekly_reset_hours', 'seven_day_reset_hours', 'reset7dHours', 'resets7dInHours')
 
-                    $fiveHourResetHours = Get-ResetHoursFromAt -Value $commandFiveResetAt -NowUtc $nowUtc
+                    $fiveHourResetAtUtc = ConvertTo-TokenDateTime -Value $commandFiveResetAt
+                    $weeklyResetAtUtc = ConvertTo-TokenDateTime -Value $commandWeekResetAt
+                    $fiveHourResetHours = Get-ResetHoursFromAt -Value $fiveHourResetAtUtc -NowUtc $nowUtc
                     if ($null -eq $fiveHourResetHours) {
                         $fiveHourResetHours = ConvertTo-ResetHoursOrNull -Value $commandFiveResetHours -NowUtc $nowUtc
                     }
-                    $weeklyResetHours = Get-ResetHoursFromAt -Value $commandWeekResetAt -NowUtc $nowUtc
+                    $weeklyResetHours = Get-ResetHoursFromAt -Value $weeklyResetAtUtc -NowUtc $nowUtc
                     if ($null -eq $weeklyResetHours) {
                         $weeklyResetHours = ConvertTo-ResetHoursOrNull -Value $commandWeekResetHours -NowUtc $nowUtc
                     }
@@ -1434,10 +1617,42 @@ function Get-TokenUsageSnapshot {
                         $weeklyRemainingPercent = [Math]::Max(0, [Math]::Round(100.0 - [double]$commandWeekUsedPercent, 1))
                         $weeklyUsedDisplay = ('{0:N0}% used' -f [double]$commandWeekUsedPercent)
                     }
+
+                    if ($provider.Id -eq 'antigravity') {
+                        Update-AntigravityQuotaCache `
+                            -Cache $quotaCache `
+                            -NowUtc $nowUtc `
+                            -FiveHourRemainingPercent $fiveHourRemainingPercent `
+                            -WeeklyRemainingPercent $weeklyRemainingPercent `
+                            -FiveHourResetAt $fiveHourResetAtUtc `
+                            -WeeklyResetAt $weeklyResetAtUtc
+                        $lastVisibleLocal = $nowUtc.ToLocalTime()
+                    }
                 }
             }
             else {
                 $commandStatus = 'Command produced no output'
+            }
+
+            if ($provider.Id -eq 'antigravity' -and -not (Test-TokenProviderStatusOk -Status $commandStatus)) {
+                $cachedQuota = Get-EstimatedAntigravityQuotaFromCache -Cache $quotaCache -NowUtc $nowUtc
+                if ($null -ne $cachedQuota) {
+                    $fiveHourRemainingPercent = $cachedQuota.FiveHourRemainingPercent
+                    $weeklyRemainingPercent = $cachedQuota.WeeklyRemainingPercent
+                    $fiveHourResetHours = $cachedQuota.FiveHourResetHours
+                    $weeklyResetHours = $cachedQuota.WeeklyResetHours
+                    $fiveHourResetAtUtc = $cachedQuota.FiveHourResetAtUtc
+                    $weeklyResetAtUtc = $cachedQuota.WeeklyResetAtUtc
+                    if ($null -ne $fiveHourRemainingPercent) {
+                        $fiveHourUsedDisplay = ('{0:N0}% used' -f (100.0 - [double]$fiveHourRemainingPercent))
+                    }
+                    if ($null -ne $weeklyRemainingPercent) {
+                        $weeklyUsedDisplay = ('{0:N0}% used' -f (100.0 - [double]$weeklyRemainingPercent))
+                    }
+                    $lastVisibleLocal = ([DateTime]$cachedQuota.ObservedAtUtc).ToLocalTime()
+                    $isEstimatedFromCache = $true
+                    $commandStatus = ('Last visible {0}; estimated while local service is offline' -f $lastVisibleLocal.ToString('yyyy-MM-dd HH:mm'))
+                }
             }
 
             $health = Get-ProviderTokenHealth `
@@ -1464,7 +1679,9 @@ function Get-TokenUsageSnapshot {
                 WeeklyResetHours = $weeklyResetHours
                 Events = 0
                 Files = 0
-                LastEventLocal = $null
+                LastEventLocal = $lastVisibleLocal
+                LastVisibleLocal = $lastVisibleLocal
+                IsEstimatedFromCache = $isEstimatedFromCache
                 Status = $commandStatus
                 HealthState = $health.State
                 HealthText = $health.Text

@@ -158,6 +158,12 @@ function Get-StatusStripText {
         $parts.Add(('{0} {1}' -f $name, $health))
         $parts.Add(('{0} 5h {1}, reset {2}' -f $name, (Format-Percent $provider.FiveHourRemainingPercent), (Format-ResetHours $provider.FiveHourResetHours)))
         $parts.Add(('{0} 7d {1}, reset {2}' -f $name, (Format-Percent $provider.WeeklyRemainingPercent), (Format-ResetHours $provider.WeeklyResetHours)))
+        if ((Get-Member -InputObject $provider -Name IsEstimatedFromCache -MemberType NoteProperty -ErrorAction SilentlyContinue) -and
+            $provider.IsEstimatedFromCache -and
+            (Get-Member -InputObject $provider -Name LastVisibleLocal -MemberType NoteProperty -ErrorAction SilentlyContinue) -and
+            $null -ne $provider.LastVisibleLocal) {
+            $parts.Add(('{0} last seen {1}' -f $name, ([DateTime]$provider.LastVisibleLocal).ToString('HH:mm')))
+        }
     }
 
     if ($parts.Count -eq 0) {
@@ -384,7 +390,7 @@ function Show-Dashboard {
         @('WeeklyLimit', '7d quota'),
         @('WeeklyLeft', '7d left'),
         @('WeeklyReset', '7d reset'),
-        @('LastEvent', 'Last event'),
+        @('LastEvent', 'Last visible'),
         @('Files', 'Files'),
         @('Events', 'Events'),
         @('Status', 'Status')
