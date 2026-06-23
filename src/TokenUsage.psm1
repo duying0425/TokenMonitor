@@ -135,10 +135,167 @@ catch {
 '@
 }
 
+function Get-DefaultClaudeCommand {
+    return @'
+$credsPath = if ($env:CLAUDE_CONFIG_DIR) {
+    Join-Path $env:CLAUDE_CONFIG_DIR ".credentials.json"
+} else {
+    Join-Path $env:USERPROFILE ".claude\.credentials.json"
+}
+
+if (-not (Test-Path -LiteralPath $credsPath)) {
+    [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress
+    exit
+}
+
+function Save-ClaudeCredentials {
+    param($Creds)
+    $Creds | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $credsPath -Encoding UTF8
+}
+
+function Set-ClaudeOauthProperty {
+    param($Oauth, [string]$Name, $Value)
+
+    if (Get-Member -InputObject $Oauth -Name $Name -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+        $Oauth.$Name = $Value
+    } else {
+        $Oauth | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+    }
+}
+
+function Update-ClaudeOauthToken {
+    param($Creds)
+
+    $oauth = $Creds.claudeAiOauth
+    if (-not $oauth.refreshToken) {
+        throw "OAuth token expired and no refreshToken is available; run claude /login again"
+    }
+
+    $clientId = $oauth.clientId
+    if (-not $clientId) {
+        $clientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+    }
+
+    $body = @{
+        grant_type = "refresh_token"
+        refresh_token = $oauth.refreshToken
+        client_id = $clientId
+    }
+
+    $refresh = Invoke-RestMethod `
+        -Uri "https://platform.claude.com/v1/oauth/token" `
+        -Method Post `
+        -ContentType "application/x-www-form-urlencoded" `
+        -Body $body `
+        -ErrorAction Stop
+
+    $newAccessToken = $refresh.access_token
+    if (-not $newAccessToken) {
+        $newAccessToken = $refresh.accessToken
+    }
+    if (-not $newAccessToken) {
+        throw "OAuth refresh response did not include an access token"
+    }
+
+    Set-ClaudeOauthProperty -Oauth $oauth -Name "accessToken" -Value $newAccessToken
+
+    $newRefreshToken = $refresh.refresh_token
+    if (-not $newRefreshToken) {
+        $newRefreshToken = $refresh.refreshToken
+    }
+    if ($newRefreshToken) {
+        Set-ClaudeOauthProperty -Oauth $oauth -Name "refreshToken" -Value $newRefreshToken
+    }
+
+    $expiresIn = $refresh.expires_in
+    if (-not $expiresIn) {
+        $expiresIn = $refresh.expiresIn
+    }
+    if ($expiresIn) {
+        Set-ClaudeOauthProperty -Oauth $oauth -Name "expiresAt" -Value ([int64](([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()) + ([double]$expiresIn * 1000)))
+    }
+
+    Save-ClaudeCredentials -Creds $Creds
+    return $oauth.accessToken
+}
+
+function Invoke-ClaudeUsage {
+    param([string]$Token)
+
+    $headers = @{
+        Authorization = "Bearer $Token"
+        "User-Agent" = "claude-code/2.1.186"
+        "anthropic-beta" = "oauth-2025-04-20"
+    }
+
+    return Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop
+}
+
+try {
+    $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json
+    $oauth = $creds.claudeAiOauth
+    if (-not $oauth) {
+        [PSCustomObject]@{ Error = "No claudeAiOauth credentials" } | ConvertTo-Json -Compress
+        exit
+    }
+
+    $token = $oauth.accessToken
+    $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $expiresAt = [int64]0
+    if ($oauth.expiresAt) {
+        [void][int64]::TryParse([string]$oauth.expiresAt, [ref]$expiresAt)
+    }
+
+    if (-not $token -or ($expiresAt -gt 0 -and $expiresAt -lt ($nowMs + 120000))) {
+        $token = Update-ClaudeOauthToken -Creds $creds
+    }
+
+    try {
+        $resp = Invoke-ClaudeUsage -Token $token
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+        if ($statusCode -ne 401) {
+            throw
+        }
+
+        $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json
+        $token = Update-ClaudeOauthToken -Creds $creds
+        $resp = Invoke-ClaudeUsage -Token $token
+    }
+
+    if ($resp) {
+        $f = $resp.five_hour
+        $w = $resp.seven_day
+        $fReset = $f.resets_at
+        if (-not $fReset) { $fReset = $f.reset_at }
+        if (-not $fReset) { $fReset = $f.resetsAt }
+        $wReset = $w.resets_at
+        if (-not $wReset) { $wReset = $w.reset_at }
+        if (-not $wReset) { $wReset = $w.resetsAt }
+        [PSCustomObject]@{
+            fiveHourUsedPercent = $f.utilization
+            weeklyUsedPercent = $w.utilization
+            fiveHourResetAt = $fReset
+            weeklyResetAt = $wReset
+        } | ConvertTo-Json -Compress
+    } else {
+        [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress
+    }
+}
+catch {
+    [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+'@
+}
+
 function New-DefaultTokenSettings {
     $defaultGeminiCommand = Get-DefaultAntigravityCommand
     $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
-    $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $f = $resp.five_hour; $w = $resp.seven_day; $fReset = $f.resets_at; if (-not $fReset) { $fReset = $f.reset_at }; if (-not $fReset) { $fReset = $f.resetsAt }; $wReset = $w.resets_at; if (-not $wReset) { $wReset = $w.reset_at }; if (-not $wReset) { $wReset = $w.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $f.utilization; weeklyUsedPercent = $w.utilization; fiveHourResetAt = $fReset; weeklyResetAt = $wReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultClaudeCommand = Get-DefaultClaudeCommand
 
     return [ordered]@{
         RefreshSeconds = 600
@@ -197,7 +354,7 @@ function Read-TokenMonitorSettings {
 
     $defaultGeminiCommand = Get-DefaultAntigravityCommand
     $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
-    $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $f = $resp.five_hour; $w = $resp.seven_day; $fReset = $f.resets_at; if (-not $fReset) { $fReset = $f.reset_at }; if (-not $fReset) { $fReset = $f.resetsAt }; $wReset = $w.resets_at; if (-not $wReset) { $wReset = $w.reset_at }; if (-not $wReset) { $wReset = $w.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $f.utilization; weeklyUsedPercent = $w.utilization; fiveHourResetAt = $fReset; weeklyResetAt = $wReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultClaudeCommand = Get-DefaultClaudeCommand
 
     if (-not (Test-Path -LiteralPath $Path)) {
         $settings = New-DefaultTokenSettings
@@ -278,7 +435,9 @@ function Read-TokenMonitorSettings {
             }
             elseif ($provider.Id -eq 'claude' -and
                 ([string]$provider.Command).IndexOf('https://api.anthropic.com/api/oauth/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-                ([string]$provider.Command).IndexOf('fiveHourResetAt', [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+                (([string]$provider.Command).IndexOf('fiveHourResetAt', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+                ([string]$provider.Command).IndexOf('https://platform.claude.com/v1/oauth/token', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+                ([string]$provider.Command).IndexOf('Set-ClaudeOauthProperty', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
                 $provider.Command = $defaultClaudeCommand
                 $migrated = $true
             }
