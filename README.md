@@ -117,17 +117,32 @@ For providers using query commands, you must configure local authorization files
   **Codex / ChatGPT**：当您在终端中使用 Codex CLI 登录后，会自动在 `~/.codex/auth.json` 生成该文件。
 - **Claude Code**: Automatically created at `~/.claude/.credentials.json` when you log in through the Claude CLI.
   **Claude Code**：当您在终端中使用 Claude CLI 登录后，会自动在 `~/.claude/.credentials.json` 生成该凭据。
-- **Antigravity / Gemini**: Create a file at `%APPDATA%\TokenMonitor\gemini_auth.json` with the following contents:
-  **Antigravity / Gemini**：需要您手动在 `%APPDATA%\TokenMonitor\gemini_auth.json` 创建一个文件，内容格式如下：
+- **Antigravity / Gemini**: You can configure this manually or use our automated extraction script:
+  **Antigravity / Gemini**：您可以手动配置，也可以使用我们的自动提取脚本：
+
+  **Method A: Automated Extraction (Recommended) / 方法 A：自动提取（推荐）**
+  1. Temporarily close Microsoft Edge (or Chrome) completely, ensuring no background processes are running.
+     暂时完全关闭 Microsoft Edge（或 Chrome）浏览器，并确保没有后台进程驻留。
+  2. Run the following command in the repository folder:
+     在仓库根目录下运行以下命令：
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File .\tests\dump-cookies-auto.ps1
+     ```
+     This script will automatically copy, decrypt, and save your active Gemini session cookies to `%APPDATA%\TokenMonitor\gemini_auth.json`.
+     该脚本会自动复制并解密您浏览器中处于登录状态的 Gemini 会话 Cookie，并将其保存到 `%APPDATA%\TokenMonitor\gemini_auth.json`。
+
+  **Method B: Manual Setup / 方法 B：手动设置**
+  Create a file at `%APPDATA%\TokenMonitor\gemini_auth.json` with the following contents:
+  在 `%APPDATA%\TokenMonitor\gemini_auth.json` 创建一个文件，内容格式如下：
   ```json
   {
     "Secure_1PSID": "your___Secure-1PSID_cookie",
-    "SAPISID": "your_SAPISID_cookie"
+    "Secure_1PSIDTS": "your___Secure-1PSIDTS_cookie"
   }
   ```
-  *(To get these values: open Microsoft Edge or Chrome, log into `https://gemini.google.com`, press `F12` to open Developer Tools, go to **Application (应用) -> Cookies**, select `https://gemini.google.com`, and copy the values for the `__Secure-1PSID` and `SAPISID` cookies).*
+  *(To get these values: open Microsoft Edge or Chrome, log into `https://gemini.google.com`, press `F12` to open Developer Tools, go to **Application (应用) -> Cookies**, select `https://gemini.google.com`, and copy the values for the `__Secure-1PSID` and `__Secure-1PSIDTS` cookies. Note: `SAPISID` is now optional).*
   
-  *(获取这些 Cookie 值的方法：打开 Edge 或 Chrome 浏览器，登录并访问 `https://gemini.google.com`；在页面上按 `F12` 打开开发者工具，切换到 **Application（应用，部分浏览器为“存储”）-> Cookies**，在左侧选择 `https://gemini.google.com` 域名，即可在右侧表格中找到 `__Secure-1PSID` 和 `SAPISID` 的 Value 值，并复制填入 JSON 中)*
+  *(获取这些 Cookie 值的方法：打开 Edge 或 Chrome 浏览器，登录并访问 `https://gemini.google.com`；在页面上按 `F12` 打开开发者工具，切换到 **Application（应用，部分浏览器为“存储”）-> Cookies**，在左侧选择 `https://gemini.google.com` 域名，即可在右侧表格中找到 `__Secure-1PSID` 和 `__Secure-1PSIDTS` 的 Value 值，并复制填入 JSON 中。注意：`SAPISID` 现在已是可选参数，不再强制要求配置。)*
 
 ## CLI checks / 命令行检查
 
