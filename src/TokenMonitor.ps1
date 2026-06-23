@@ -5,9 +5,20 @@ param(
 
 Set-StrictMode -Version Latest
 
-$modulePath = Join-Path $PSScriptRoot 'TokenUsage.psm1'
+$scriptRoot = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptRoot)) {
+    $compiledScriptRoot = Get-Variable -Name ScriptRoot -ErrorAction SilentlyContinue
+    if ($null -ne $compiledScriptRoot -and -not [string]::IsNullOrWhiteSpace([string]$compiledScriptRoot.Value)) {
+        $scriptRoot = [string]$compiledScriptRoot.Value
+    }
+}
+if ([string]::IsNullOrWhiteSpace($scriptRoot)) {
+    $scriptRoot = [System.AppDomain]::CurrentDomain.BaseDirectory.TrimEnd('\')
+}
+
+$modulePath = Join-Path $scriptRoot 'TokenUsage.psm1'
 if (-not (Test-Path -LiteralPath $modulePath)) {
-    $modulePath = Join-Path (Join-Path $PSScriptRoot 'src') 'TokenUsage.psm1'
+    $modulePath = Join-Path (Join-Path $scriptRoot 'src') 'TokenUsage.psm1'
 }
 Import-Module $modulePath -Force
 

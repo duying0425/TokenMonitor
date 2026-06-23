@@ -42,6 +42,19 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\start-token-monit
 Double-click the tray icon or the status strip to open the dashboard. Right-click either one for Dashboard, Refresh, Settings, status strip visibility, and Exit.
 双击托盘图标或状态条可以打开控制面板（Dashboard）。右键点击它们可以弹出菜单：控制面板、手动刷新、设置、切换状态条显隐以及退出。
 
+## Build / 构建
+
+Install `ps2exe`, then build the Windows tray executable from the repository root:
+安装 `ps2exe` 后，在仓库根目录执行以下命令构建 Windows 托盘程序：
+
+```powershell
+Install-Module ps2exe -Scope CurrentUser
+ps2exe .\src\TokenMonitor.ps1 .\TokenMonitor.exe -STA -noConsole -title TokenMonitor -product TokenMonitor -version 1.2.0 -embedFiles @{'.\src\TokenUsage.psm1'='.\src\TokenUsage.psm1'}
+```
+
+The generated `TokenMonitor.exe` embeds `src\TokenUsage.psm1` and extracts it beside the executable on first run.
+生成的 `TokenMonitor.exe` 会嵌入 `src\TokenUsage.psm1`，首次运行时会在 exe 所在目录旁释放该模块文件。
+
 ## Configure quotas / 配置额度
 
 Open Settings from the tray menu.
