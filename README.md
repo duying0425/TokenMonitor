@@ -1,48 +1,69 @@
 # TokenMonitor
 
 Windows taskbar tray monitor for local AI coding-tool token usage.
+Windows 系统托盘中的本地 AI 编程工具 Token 使用量监视器。
 
-## What it does
+## What it does / 功能特性
 
 - Runs as a Windows tray icon.
+  以 Windows 系统托盘图标的形式运行。
 - Shows an always-visible status strip docked above the Windows taskbar.
+  在 Windows 任务栏上方显示一个常显的状态条（Status Strip）。
 - Shows a dashboard for Antigravity/Gemini, Codex/ChatGPT, and Claude Code.
+  为 Antigravity/Gemini、Codex/ChatGPT 和 Claude Code 提供专用的控制面板（Dashboard）。
 - Calculates rolling 5-hour and 7-day usage from local JSON/JSONL logs (for providers without a query command configured, e.g. Gemini/Antigravity).
+  从本地的 JSON/JSONL 日志中计算 5 小时和 7 天滚动窗口的使用量（适用于未配置 API 查询命令的 Provider，例如无凭据时的 Gemini/Antigravity）。
 - Converts usage to remaining percentages using quotas that you configure.
-- For providers with a query command configured (such as Codex/ChatGPT and Claude Code), queries the official endpoints directly for real-time live usage percentages, bypassing local log scanning.
+  根据您配置的额度（Quota），自动将使用量转换为剩余百分比。
+- For providers with a query command configured (such as Codex/ChatGPT, Claude Code, and Gemini/Antigravity), queries the official endpoints directly for real-time live usage percentages, bypassing local log scanning.
+  对于配置了查询命令（Command）的 Provider（例如已配置凭据的 Codex/ChatGPT、Claude Code 和 Gemini/Antigravity），直接向官方接口查询实时的额度剩余百分比，并跳过本地日志文件扫描。
 - Stores settings in `%APPDATA%\TokenMonitor\settings.json`.
+  设置存储在 `%APPDATA%\TokenMonitor\settings.json`。
 
 This is a local monitor and query tool. For providers without a query command configured, remaining quota is computed as:
+本软件是一个本地监视和查询工具。对于未配置查询命令的 Provider，其剩余配额计算公式为：
 
 ```text
 remaining % = max(0, quota - locally observed usage) / quota
 ```
 
-For providers with a query command configured (e.g. Codex/ChatGPT and Claude Code), it queries the official usage APIs in the background using your local credentials/session tokens to fetch real-time remaining quota percentages, skipping local calculations. If the command fails, it reports the error directly.
+For providers with a query command configured, it queries the official usage APIs in the background using your local credentials/session tokens to fetch real-time remaining quota percentages, skipping local calculations. If the command fails, it reports the error directly.
+对于配置了查询命令的 Provider，它会在后台使用您的本地凭据/会话 Token 直接查询官方的使用量 API，获取实时的配额剩余百分比，跳过任何本地计算。如果命令执行失败，则直接报告错误。
 
-## Run
+## Run / 运行
 
 From this folder:
+在此目录下执行：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\start-token-monitor.ps1
 ```
 
 Double-click the tray icon or the status strip to open the dashboard. Right-click either one for Dashboard, Refresh, Settings, status strip visibility, and Exit.
+双击托盘图标或状态条可以打开控制面板（Dashboard）。右键点击它们可以弹出菜单：控制面板、手动刷新、设置、切换状态条显隐以及退出。
 
-## Configure quotas
+## Configure quotas / 配置额度
 
 Open Settings from the tray menu.
+从托盘菜单中打开 Settings（设置）。
 
 - `5h quota`: token budget for the rolling 5-hour window.
+  `5h quota`：5 小时滚动窗口内的 Token 限额预算。
 - `7d quota`: token budget for the rolling 7-day window.
+  `7d quota`：7 天（每周）滚动窗口内的 Token 限额预算。
 - `Scan roots`: semicolon-separated files or folders to scan.
+  `Scan roots`：分号隔开的本地日志扫描根目录或文件路径。
 - `File patterns`: usually `*.jsonl; *.json`.
+  `File patterns`：扫描的文件类型匹配，通常是 `*.jsonl; *.json`。
 - `Max file MB`: logs larger than this are skipped during tray refresh.
+  `Max file MB`：托盘刷新时，超出该大小的日志文件将被跳过不进行扫描。
 - `Command JSON source`: optional PowerShell command. If set, it must print JSON and can override locally scanned values.
+  `Command JSON source`：可选的 PowerShell 查询命令。如果设置了此命令，它必须输出 JSON 格式的内容，用来覆盖或替代本地扫描计算出的数值。
 - `0` quota means unknown, so the percentage is displayed as `n/a`.
+  限额设为 `0` 代表配额未知，百分比将显示为 `n/a`。
 
 Command JSON output can use any of these fields:
+自定义命令输出的 JSON 可以包含以下任一字段：
 
 ```json
 {
@@ -54,8 +75,10 @@ Command JSON output can use any of these fields:
 ```
 
 You can also emit `fiveHourUsedPercent` and `weeklyUsedPercent`; the app will convert them to remaining percentages.
+您也可以输出 `fiveHourUsedPercent`（5小时已用百分比）和 `weeklyUsedPercent`（每周已用百分比），应用程序会自动将其转换为剩余百分比。
 
 Default scan roots:
+默认本地日志扫描根目录：
 
 ```text
 Antigravity / Gemini:
@@ -70,13 +93,19 @@ Codex / ChatGPT:
 Claude Code:
 %USERPROFILE%\.claude\projects
 %USERPROFILE%\.claude\sessions
-### Credentials setup
+```
+
+### Credentials setup / 凭据设置
 
 For providers using query commands, you must configure local authorization files:
+对于使用查询命令（Command）拉取官方数据的 Provider，您需要配置本地的授权/凭据文件：
 
 - **Codex / ChatGPT**: Automatically created at `~/.codex/auth.json` when you log in through the Codex CLI.
+  **Codex / ChatGPT**：当您在终端中使用 Codex CLI 登录后，会自动在 `~/.codex/auth.json` 生成该文件。
 - **Claude Code**: Automatically created at `~/.claude/.credentials.json` when you log in through the Claude CLI.
+  **Claude Code**：当您在终端中使用 Claude CLI 登录后，会自动在 `~/.claude/.credentials.json` 生成该凭据。
 - **Antigravity / Gemini**: Create a file at `%APPDATA%\TokenMonitor\gemini_auth.json` with the following contents:
+  **Antigravity / Gemini**：需要您手动在 `%APPDATA%\TokenMonitor\gemini_auth.json` 创建一个文件，内容格式如下：
   ```json
   {
     "Secure_1PSID": "your___Secure-1PSID_cookie",
@@ -84,28 +113,35 @@ For providers using query commands, you must configure local authorization files
   }
   ```
   *(To get these values: open Microsoft Edge or Chrome, log into `https://gemini.google.com`, press `F12` to open Developer Tools, go to **Application (应用) -> Cookies**, select `https://gemini.google.com`, and copy the values for the `__Secure-1PSID` and `SAPISID` cookies).*
+  
+  *(获取这些 Cookie 值的方法：打开 Edge 或 Chrome 浏览器，登录并访问 `https://gemini.google.com`；在页面上按 `F12` 打开开发者工具，切换到 **Application（应用，部分浏览器为“存储”）-> Cookies**，在左侧选择 `https://gemini.google.com` 域名，即可在右侧表格中找到 `__Secure-1PSID` 和 `SAPISID` 的 Value 值，并复制填入 JSON 中)*
 
-## CLI checks
+## CLI checks / 命令行检查
 
 Print current local usage summary without opening the tray app:
+不启动托盘程序，直接在终端打印当前的本地使用摘要：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\src\TokenMonitor.ps1 -Dump
 ```
 
 Create/default-check settings and print their path:
+创建/检查默认配置文件的状态，并输出配置文件的路径：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\src\TokenMonitor.ps1 -SelfTest
 ```
 
-## Limits
+## Limits / 限额说明
 
 Claude Code has documented local session transcripts under `~/.claude/projects/`; Claude's `/usage` screen also uses local history for approximate plan usage. For Gemini / Antigravity, when no query command is configured, this tool treats local JSON/JSONL token logs as the source of truth.
+Claude Code 在 `~/.claude/projects/` 目录下存有本地会话记录；Claude 的命令行 `/usage` 指令也会使用这些本地历史记录来预估套餐使用情况。对于 Gemini / Antigravity，如果未配置查询命令，该工具将以本地扫描到的 JSON/JSONL Token 日志作为数据源。
 
 For Codex / ChatGPT, the tool fetches real-time rolling usage directly from the cloud analytics page (`https://chatgpt.com/codex/cloud/settings/analytics#usage`) using an automated background query command that retrieves remaining limit percentages using the session token in your local `~/.codex/auth.json` config, bypassing local logs.
+对于 Codex / ChatGPT，该工具通过自动化的后台查询命令，利用您本地 `~/.codex/auth.json` 配置中的会话 Token，直接从云端分析页面 (`https://chatgpt.com/codex/cloud/settings/analytics#usage`) 获取实时的滚动额度剩余百分比，从而跳过本地日志解析。
 
 For Claude Code, the tool fetches real-time rolling usage statistics (corresponding to the web-based usage settings page `https://claude.ai/new#settings/usage`) using the OAuth access token stored in your local `~/.claude/.credentials.json` to query the `https://api.anthropic.com/api/oauth/usage` endpoint, bypassing local logs.
+对于 Claude Code，该工具利用您本地 `~/.claude/.credentials.json` 中的 OAuth 访问 Token，向 `https://api.anthropic.com/api/oauth/usage` 发起请求，获取实时的滚动使用统计数据（与网页版 `https://claude.ai/new#settings/usage` 的配额限制一致），跳过本地日志文件扫描。
 
 For Antigravity / Gemini, the tool fetches real-time rolling compute limits directly from the Gemini web usage page (`https://gemini.google.com/usage`) using an automated background query command that retrieves remaining limit percentages using the session credentials in your local `%APPDATA%\TokenMonitor\gemini_auth.json` config, bypassing local logs.
-
+对于 Antigravity / Gemini，该工具通过自动化的后台查询命令，利用您本地 `%APPDATA%\TokenMonitor\gemini_auth.json` 配置中的 Cookie 会话凭据，直接向网页端 `https://gemini.google.com/usage` 对应的 API 发起请求获取实时的滚动计算量限额剩余百分比，跳过任何本地日志扫描与计算。
