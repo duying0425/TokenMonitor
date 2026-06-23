@@ -1901,49 +1901,46 @@ function Format-TooltipHealthCode {
     }
 }
 
+function Format-TooltipProviderName {
+    param($Provider)
+
+    $shortName = switch ($Provider.Id) {
+        'antigravity' { 'Antigravity' }
+        'codex' { 'Codex' }
+        'claude' { 'Cluade' }
+        default { $Provider.Name }
+    }
+
+    $mode = 'O'
+    if (((Get-Member -InputObject $Provider -Name IsEstimatedFromCache -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $Provider.IsEstimatedFromCache) -or
+        (-not (Test-TokenProviderStatusOk -Status $Provider.Status))) {
+        $mode = 'E'
+    }
+
+    return ('{0}({1})' -f $shortName, $mode)
+}
+
 function Format-TokenUsageTooltip {
     param($Snapshot)
 
     $nameParts = New-Object System.Collections.Generic.List[string]
     $fiveHourPercentParts = New-Object System.Collections.Generic.List[string]
-    $fiveHourResetParts = New-Object System.Collections.Generic.List[string]
     $weeklyPercentParts = New-Object System.Collections.Generic.List[string]
-    $weeklyResetParts = New-Object System.Collections.Generic.List[string]
     foreach ($provider in @($Snapshot.Providers)) {
         if (-not $provider.Enabled) {
             continue
         }
 
-        $shortName = switch ($provider.Id) {
-            'antigravity' { 'Antigravity' }
-            'codex' { 'Codex' }
-            'claude' { 'Claude' }
-            default { $provider.Name }
-        }
-
-        $nameParts.Add($shortName)
+        $nameParts.Add((Format-TooltipProviderName -Provider $provider))
         $fiveHourPercentParts.Add((Format-TooltipPercentNumber -Value $provider.FiveHourRemainingPercent))
-        
-        $fiveHourResetVal = $provider.FiveHourResetHours
-        if ($null -ne $provider.FiveHourRemainingPercent -and $provider.FiveHourRemainingPercent -ge 100) {
-            $fiveHourResetVal = 5.0
-        }
-        $fiveHourResetParts.Add((Format-TooltipTimeNumber -Value $fiveHourResetVal))
-
         $weeklyPercentParts.Add((Format-TooltipPercentNumber -Value $provider.WeeklyRemainingPercent))
-        
-        $weeklyResetVal = $provider.WeeklyResetHours
-        if ($null -ne $provider.WeeklyRemainingPercent -and $provider.WeeklyRemainingPercent -ge 100) {
-            $weeklyResetVal = 168.0
-        }
-        $weeklyResetParts.Add((Format-TooltipTimeNumber -Value $weeklyResetVal -Divisor 24.0))
     }
 
     $text = 'TokenMonitor'
     if ($nameParts.Count -gt 0) {
         $text = ($nameParts -join '/')
-        $text += ("`n{0} | {1}" -f ($fiveHourPercentParts -join '/'), ($fiveHourResetParts -join '/'))
-        $text += ("`n{0} | {1}" -f ($weeklyPercentParts -join '/'), ($weeklyResetParts -join '/'))
+        $text += ("`n5h {0}" -f ($fiveHourPercentParts -join '/'))
+        $text += ("`n7d {0}" -f ($weeklyPercentParts -join '/'))
     }
 
     if ($text.Length -gt 63) {
