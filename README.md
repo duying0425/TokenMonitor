@@ -117,8 +117,8 @@ For providers using query commands, you must configure local authorization files
   **Codex / ChatGPT**：当您在终端中使用 Codex CLI 登录后，会自动在 `~/.codex/auth.json` 生成该文件。
 - **Claude Code**: Automatically created at `~/.claude/.credentials.json` when you log in through the Claude CLI.
   **Claude Code**：当您在终端中使用 Claude CLI 登录后，会自动在 `~/.claude/.credentials.json` 生成该凭据。
-- **Antigravity**: No Gemini web cookies are required. Start the Antigravity app and TokenMonitor queries Antigravity's local language-server RPC (`RetrieveUserQuotaSummary`) using the CSRF token and localhost port written to `%APPDATA%\Antigravity\logs\main.log`.
-  **Antigravity**：不需要 Gemini 网页 Cookie。启动 Antigravity 应用后，TokenMonitor 会读取 `%APPDATA%\Antigravity\logs\main.log` 中的本地端口和 CSRF token，并调用 Antigravity 本地 language-server RPC（`RetrieveUserQuotaSummary`）。
+- **Antigravity**: No Gemini web cookies are required. Start Antigravity or Antigravity IDE and TokenMonitor queries Antigravity's local language-server RPC (`RetrieveUserQuotaSummary`) using the CSRF token and localhost port written to `%APPDATA%\Antigravity\logs\main.log` or `%APPDATA%\Antigravity IDE\logs\**\ls-main.log`.
+  **Antigravity**：不需要 Gemini 网页 Cookie。启动 Antigravity 或 Antigravity IDE 后，TokenMonitor 会读取 `%APPDATA%\Antigravity\logs\main.log` 或 `%APPDATA%\Antigravity IDE\logs\**\ls-main.log` 中的本地端口和 CSRF token，并调用 Antigravity 本地 language-server RPC（`RetrieveUserQuotaSummary`）。
 
   This intentionally does not call `https://gemini.google.com/usage`, because Gemini web quota and Antigravity quota are separate.
   这里有意不调用 `https://gemini.google.com/usage`，因为 Gemini 网页额度和 Antigravity 额度是两套不同的限制。
@@ -150,5 +150,5 @@ For Codex / ChatGPT, the tool fetches real-time rolling usage directly from the 
 For Claude Code, the tool fetches real-time rolling usage statistics (corresponding to the web-based usage settings page `https://claude.ai/new#settings/usage`) using the OAuth access token stored in your local `~/.claude/.credentials.json` to query the `https://api.anthropic.com/api/oauth/usage` endpoint, bypassing local logs.
 对于 Claude Code，该工具利用您本地 `~/.claude/.credentials.json` 中的 OAuth 访问 Token，向 `https://api.anthropic.com/api/oauth/usage` 发起请求，获取实时的滚动使用统计数据（与网页版 `https://claude.ai/new#settings/usage` 的配额限制一致），跳过本地日志文件扫描。
 
-For Antigravity, the tool fetches real-time rolling compute limits from the running Antigravity local language server and currently reports the Gemini Models quota group only.
-对于 Antigravity，该工具会从正在运行的 Antigravity 本地 language server 获取实时滚动额度，目前只统计其中的 Gemini Models 配额组。
+For Antigravity, the tool fetches real-time rolling compute limits from the running Antigravity or Antigravity IDE local language server and currently reports the Gemini Models quota group only.
+对于 Antigravity，该工具会从正在运行的 Antigravity 或 Antigravity IDE 本地 language server 获取实时滚动额度，目前只统计其中的 Gemini Models 配额组。

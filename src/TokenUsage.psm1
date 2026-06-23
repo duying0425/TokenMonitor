@@ -78,28 +78,102 @@ function New-ProviderConfig {
 
 function Get-DefaultAntigravityCommand {
     return @'
-$mainLog = Join-Path $env:APPDATA "Antigravity\logs\main.log"
-if (-not (Test-Path -LiteralPath $mainLog)) {
-    [PSCustomObject]@{ Error = "No Antigravity main.log; start Antigravity first" } | ConvertTo-Json -Compress
-    exit
-}
+# TokenMonitorAntigravityQuotaCommandVersion=3
 try {
-    $log = Get-Content -LiteralPath $mainLog -Raw -ErrorAction Stop
-    $csrfMatches = [regex]::Matches($log, "--csrf_token\s+([0-9a-fA-F-]+)")
-    $portMatches = [regex]::Matches($log, "Local:\s+https://127\.0\.0\.1:(\d+)/")
-    if ($csrfMatches.Count -eq 0 -or $portMatches.Count -eq 0) {
-        [PSCustomObject]@{ Error = "Could not find active Antigravity local service in main.log" } | ConvertTo-Json -Compress
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+    $candidates = New-Object System.Collections.Generic.List[object]
+
+    $hubLog = Join-Path $env:APPDATA "Antigravity\logs\main.log"
+    if (Test-Path -LiteralPath $hubLog) {
+        $log = Get-Content -LiteralPath $hubLog -Raw -ErrorAction Stop
+        $matches = [regex]::Matches($log, "--csrf_token\s+(?<csrf>[0-9a-fA-F-]+)[\s\S]*?Local:\s+https://127\.0\.0\.1:(?<port>\d+)/")
+        $added = 0
+        for ($i = $matches.Count - 1; $i -ge 0 -and $added -lt 4; $i--) {
+            [void]$candidates.Add([pscustomobject]@{
+                Source = "Antigravity"
+                Port = $matches[$i].Groups["port"].Value
+                Csrf = $matches[$i].Groups["csrf"].Value
+            })
+            $added++
+        }
+    }
+
+    $ideLogsRoot = Join-Path $env:APPDATA "Antigravity IDE\logs"
+    if (Test-Path -LiteralPath $ideLogsRoot) {
+        $ideLogs = Get-ChildItem -LiteralPath $ideLogsRoot -Recurse -File -Filter "ls-main.log" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 8
+        foreach ($ideLog in $ideLogs) {
+            if ($candidates.Count -ge 12) {
+                break
+            }
+            $log = Get-Content -LiteralPath $ideLog.FullName -Raw -ErrorAction SilentlyContinue
+            if ([string]::IsNullOrWhiteSpace($log)) {
+                continue
+            }
+            $matches = [regex]::Matches($log, "--csrf_token\s+(?<csrf>[0-9a-fA-F-]+)[\s\S]*?Language server listening on random port at (?<port>\d+) for HTTPS")
+            for ($i = $matches.Count - 1; $i -ge 0 -and $candidates.Count -lt 12; $i--) {
+                [void]$candidates.Add([pscustomobject]@{
+                    Source = "Antigravity IDE"
+                    Port = $matches[$i].Groups["port"].Value
+                    Csrf = $matches[$i].Groups["csrf"].Value
+                })
+            }
+        }
+    }
+
+    if ($candidates.Count -eq 0) {
+        [PSCustomObject]@{ Error = "No Antigravity local service logs found; start Antigravity or Antigravity IDE first" } | ConvertTo-Json -Compress
         exit
     }
 
-    $csrf = $csrfMatches[$csrfMatches.Count - 1].Groups[1].Value
-    $port = $portMatches[$portMatches.Count - 1].Groups[1].Value
-    $url = "https://127.0.0.1:$port/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary"
+    $uniqueCandidates = New-Object System.Collections.Generic.List[object]
+    $seen = @{}
+    foreach ($candidate in $candidates) {
+        $key = "$($candidate.Port)|$($candidate.Csrf)"
+        if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            [void]$uniqueCandidates.Add($candidate)
+        }
+    }
+    $candidates = $uniqueCandidates
 
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-    $headers = @{ "x-codeium-csrf-token" = $csrf }
-    $resp = Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body "{}" -ContentType "application/json" -ErrorAction Stop
+    $resp = $null
+    $lastError = $null
+    foreach ($candidate in $candidates) {
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            $connect = $tcp.BeginConnect("127.0.0.1", [int]$candidate.Port, $null, $null)
+            if (-not $connect.AsyncWaitHandle.WaitOne(750, $false)) {
+                $tcp.Close()
+                continue
+            }
+            try {
+                $tcp.EndConnect($connect)
+            }
+            finally {
+                $connect.AsyncWaitHandle.Close()
+                $tcp.Close()
+            }
+
+            $url = "https://127.0.0.1:$($candidate.Port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary"
+            $headers = @{ "x-codeium-csrf-token" = $candidate.Csrf }
+            $resp = Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body "{}" -ContentType "application/json" -TimeoutSec 3 -ErrorAction Stop
+            break
+        }
+        catch {
+            $lastError = $_.Exception.Message
+            $resp = $null
+        }
+    }
+
+    if (-not $resp) {
+        [PSCustomObject]@{ Error = "Antigravity local service is not running; start Antigravity or Antigravity IDE first" } | ConvertTo-Json -Compress
+        exit
+    }
+
     $groups = @($resp.response.groups)
     $geminiGroup = $groups | Where-Object { $_.displayName -eq "Gemini Models" } | Select-Object -First 1
     if (-not $geminiGroup) {
@@ -415,7 +489,7 @@ function Read-TokenMonitorSettings {
             $migrated = $true
         }
         else {
-            if ($provider.Id -eq 'antigravity' -and ([string]::IsNullOrWhiteSpace($provider.Command) -or ($provider.Command).IndexOf('gemini.google.com/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -or ($provider.Command).IndexOf('v1internal:retrieveUserQuota', [StringComparison]::OrdinalIgnoreCase) -ge 0 -or ($provider.Command).IndexOf('RetrieveUserQuotaSummary', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
+            if ($provider.Id -eq 'antigravity' -and ([string]::IsNullOrWhiteSpace($provider.Command) -or ($provider.Command).IndexOf('gemini.google.com/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -or ($provider.Command).IndexOf('v1internal:retrieveUserQuota', [StringComparison]::OrdinalIgnoreCase) -ge 0 -or ($provider.Command).IndexOf('RetrieveUserQuotaSummary', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or ($provider.Command).IndexOf('TokenMonitorAntigravityQuotaCommandVersion=3', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
                 $provider.Command = $defaultGeminiCommand
                 $migrated = $true
             }
