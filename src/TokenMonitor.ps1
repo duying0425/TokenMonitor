@@ -38,14 +38,16 @@ function Write-Snapshot {
             $weeklyUsed = $provider.WeeklyUsedDisplay
         }
 
-        $line = '{0}: 5h {1}/{2} ({3} left), 7d {4}/{5} ({6} left), files {7}, events {8}, {9}' -f `
+        $line = '{0}: 5h {1}/{2} ({3} left, reset {4}), 7d {5}/{6} ({7} left, reset {8}), files {9}, events {10}, {11}' -f `
             $provider.Name,
             $fiveHourUsed,
             (Format-TokenCount $provider.FiveHourLimit),
             (Format-Percent $provider.FiveHourRemainingPercent),
+            (Format-ResetHours $provider.FiveHourResetHours),
             $weeklyUsed,
             (Format-TokenCount $provider.WeeklyLimit),
             (Format-Percent $provider.WeeklyRemainingPercent),
+            (Format-ResetHours $provider.WeeklyResetHours),
             $provider.Files,
             $provider.Events,
             $provider.Status
@@ -148,8 +150,8 @@ function Get-StatusStripText {
             default { $provider.Name }
         }
 
-        $parts.Add(('{0} 5h {1}' -f $name, (Format-Percent $provider.FiveHourRemainingPercent)))
-        $parts.Add(('{0} 7d {1}' -f $name, (Format-Percent $provider.WeeklyRemainingPercent)))
+        $parts.Add(('{0} 5h {1}, reset {2}' -f $name, (Format-Percent $provider.FiveHourRemainingPercent), (Format-ResetHours $provider.FiveHourResetHours)))
+        $parts.Add(('{0} 7d {1}, reset {2}' -f $name, (Format-Percent $provider.WeeklyRemainingPercent), (Format-ResetHours $provider.WeeklyResetHours)))
     }
 
     if ($parts.Count -eq 0) {
@@ -286,9 +288,11 @@ function Update-DashboardGrid {
             $fiveHourUsed,
             (Format-TokenCount $provider.FiveHourLimit),
             (Format-Percent $provider.FiveHourRemainingPercent),
+            (Format-ResetHours $provider.FiveHourResetHours),
             $weeklyUsed,
             (Format-TokenCount $provider.WeeklyLimit),
             (Format-Percent $provider.WeeklyRemainingPercent),
+            (Format-ResetHours $provider.WeeklyResetHours),
             (Format-DateCell $provider.LastEventLocal),
             [string]$provider.Files,
             [string]$provider.Events,
@@ -397,9 +401,11 @@ function Show-Dashboard {
         @('FiveHourUsed', '5h used'),
         @('FiveHourLimit', '5h quota'),
         @('FiveHourLeft', '5h left'),
+        @('FiveHourReset', '5h reset'),
         @('WeeklyUsed', '7d used'),
         @('WeeklyLimit', '7d quota'),
         @('WeeklyLeft', '7d left'),
+        @('WeeklyReset', '7d reset'),
         @('LastEvent', 'Last event'),
         @('Files', 'Files'),
         @('Events', 'Events'),

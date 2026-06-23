@@ -1,8 +1,11 @@
 *.log
 *.tmp
-bin/
+bin/*
+!bin/
+!bin/TokenMonitor.exe
 obj/
 .vs/
-TokenMonitor.exe
-TokenUsage.psm1
+/TokenMonitor.exe
+/TokenMonitor-new.exe
+/TokenUsage.psm1
 tests/

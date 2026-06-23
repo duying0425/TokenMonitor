@@ -78,8 +78,8 @@ function New-ProviderConfig {
 
 function New-DefaultTokenSettings {
     $defaultGeminiCommand = '$authPath = "$env:APPDATA\TokenMonitor\gemini_auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No gemini_auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $sapisid = $auth.SAPISID; $psid1 = $auth."__Secure-1PSID"; if (-not $sapisid -or -not $psid1) { [PSCustomObject]@{ Error = "Missing credentials in gemini_auth.json" } | ConvertTo-Json -Compress; exit }; $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession; $uri = New-Object System.Uri("https://gemini.google.com"); foreach ($prop in $auth.PSObject.Properties) { if ($prop.Value -and $prop.Value -is [string]) { try { $session.Cookies.Add($uri, (New-Object System.Net.Cookie($prop.Name, $prop.Value))) } catch {} } }; $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $mkHash = { param($key) $bytes = [System.Security.Cryptography.HashAlgorithm]::Create("SHA1").ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$now $key https://gemini.google.com")); [System.BitConverter]::ToString($bytes).Replace("-","").ToLower() }; $h = & $mkHash $sapisid; $authHeader = "SAPISIDHASH ${now}_${h}"; $h1 = $auth."__Secure-1PAPISID"; if ($h1) { $h1hash = & $mkHash $h1; $authHeader += " SAPISID1PHASH ${now}_${h1hash}" }; $h3 = $auth."__Secure-3PAPISID"; if ($h3) { $h3hash = & $mkHash $h3; $authHeader += " SAPISID3PHASH ${now}_${h3hash}" }; $hdrs = @{ Authorization = $authHeader; "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"; "x-same-domain" = "1"; Origin = "https://gemini.google.com"; Referer = "https://gemini.google.com/usage" }; $html = Invoke-RestMethod -Uri "https://gemini.google.com/usage" -Headers $hdrs -WebSession $session -Method Get -ErrorAction Stop; $at = $null; $bl = $null; $fsid = $null; $idx = $html.IndexOf("WIZ_global_data ="); if ($idx -ge 0) { $s = $idx + "WIZ_global_data =".Length; $e = $html.IndexOf("};", $s); if ($e -ge 0) { $d = ConvertFrom-Json $html.Substring($s, $e - $s + 1); $at = $d.SNlM0e; if (-not $at) { foreach ($p in $d.PSObject.Properties) { if ($p.Value -is [string] -and $p.Value.StartsWith("AD1_")) { $at = $p.Value; break } } }; $bl = $d.cfb2h; $fsid = $d.FdrFJe } }; if (-not $at -and ($html -match ''"SNlM0e"\s*:\s*"([^"]+)"'')) { $at = $Matches[1] }; if (-not $at -and ($html -match ''"(AD1_[A-Za-z0-9\-_:%]+)"'')) { $at = $Matches[1] }; if (-not $at) { [PSCustomObject]@{ Error = "Could not extract CSRF token from Gemini usage page" } | ConvertTo-Json -Compress; exit }; $reqStr = ''[[["jSf9Qc","[]",null,"generic"]]]''; $bodyStr = "f.req=" + [Uri]::EscapeDataString($reqStr) + "&at=" + [Uri]::EscapeDataString($at); $postUrl = "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=jSf9Qc&source-path=%2Fusage"; if ($bl) { $postUrl += "&bl=" + [Uri]::EscapeDataString($bl) }; if ($fsid) { $postUrl += "&f.sid=" + [Uri]::EscapeDataString($fsid) }; $postUrl += "&hl=en&_reqid=$(Get-Random -Min 1000000 -Max 9999999)&rt=c"; $resp = Invoke-RestMethod -Uri $postUrl -Headers $hdrs -WebSession $session -Method Post -Body $bodyStr -ContentType "application/x-www-form-urlencoded;charset=UTF-8" -ErrorAction Stop; if ($resp -match ''"jSf9Qc","(\[.*?\])"'') { $payload = ConvertFrom-Json $Matches[1]; $items = $payload[1]; $fivePercent = $null; $weekPercent = $null; foreach ($item in $items) { $rem = [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round((1.0 - [double]$item[1]) * 100.0, 1))); if ($item[2] -eq 1) { $fivePercent = $rem } elseif ($item[2] -eq 2) { $weekPercent = $rem } }; [PSCustomObject]@{ fiveHourRemainingPercent = $fivePercent; weeklyRemainingPercent = $weekPercent } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Unexpected API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
-    $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { [PSCustomObject]@{ fiveHourUsedPercent = $resp.rate_limit.primary_window.used_percent; weeklyUsedPercent = $resp.rate_limit.secondary_window.used_percent } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
-    $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { [PSCustomObject]@{ fiveHourUsedPercent = $resp.five_hour.utilization; weeklyUsedPercent = $resp.seven_day.utilization } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $f = $resp.five_hour; $w = $resp.seven_day; $fReset = $f.resets_at; if (-not $fReset) { $fReset = $f.reset_at }; if (-not $fReset) { $fReset = $f.resetsAt }; $wReset = $w.resets_at; if (-not $wReset) { $wReset = $w.reset_at }; if (-not $wReset) { $wReset = $w.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $f.utilization; weeklyUsedPercent = $w.utilization; fiveHourResetAt = $fReset; weeklyResetAt = $wReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
 
     return [ordered]@{
         RefreshSeconds = 60
@@ -137,8 +137,8 @@ function Read-TokenMonitorSettings {
     param([string]$Path = (Get-TokenMonitorSettingsPath))
 
     $defaultGeminiCommand = '$authPath = "$env:APPDATA\TokenMonitor\gemini_auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No gemini_auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $sapisid = $auth.SAPISID; $psid1 = $auth."__Secure-1PSID"; if (-not $sapisid -or -not $psid1) { [PSCustomObject]@{ Error = "Missing credentials in gemini_auth.json" } | ConvertTo-Json -Compress; exit }; $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession; $uri = New-Object System.Uri("https://gemini.google.com"); foreach ($prop in $auth.PSObject.Properties) { if ($prop.Value -and $prop.Value -is [string]) { try { $session.Cookies.Add($uri, (New-Object System.Net.Cookie($prop.Name, $prop.Value))) } catch {} } }; $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $mkHash = { param($key) $bytes = [System.Security.Cryptography.HashAlgorithm]::Create("SHA1").ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$now $key https://gemini.google.com")); [System.BitConverter]::ToString($bytes).Replace("-","").ToLower() }; $h = & $mkHash $sapisid; $authHeader = "SAPISIDHASH ${now}_${h}"; $h1 = $auth."__Secure-1PAPISID"; if ($h1) { $h1hash = & $mkHash $h1; $authHeader += " SAPISID1PHASH ${now}_${h1hash}" }; $h3 = $auth."__Secure-3PAPISID"; if ($h3) { $h3hash = & $mkHash $h3; $authHeader += " SAPISID3PHASH ${now}_${h3hash}" }; $hdrs = @{ Authorization = $authHeader; "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"; "x-same-domain" = "1"; Origin = "https://gemini.google.com"; Referer = "https://gemini.google.com/usage" }; $html = Invoke-RestMethod -Uri "https://gemini.google.com/usage" -Headers $hdrs -WebSession $session -Method Get -ErrorAction Stop; $at = $null; $bl = $null; $fsid = $null; $idx = $html.IndexOf("WIZ_global_data ="); if ($idx -ge 0) { $s = $idx + "WIZ_global_data =".Length; $e = $html.IndexOf("};", $s); if ($e -ge 0) { $d = ConvertFrom-Json $html.Substring($s, $e - $s + 1); $at = $d.SNlM0e; if (-not $at) { foreach ($p in $d.PSObject.Properties) { if ($p.Value -is [string] -and $p.Value.StartsWith("AD1_")) { $at = $p.Value; break } } }; $bl = $d.cfb2h; $fsid = $d.FdrFJe } }; if (-not $at -and ($html -match ''"SNlM0e"\s*:\s*"([^"]+)"'')) { $at = $Matches[1] }; if (-not $at -and ($html -match ''"(AD1_[A-Za-z0-9\-_:%]+)"'')) { $at = $Matches[1] }; if (-not $at) { [PSCustomObject]@{ Error = "Could not extract CSRF token from Gemini usage page" } | ConvertTo-Json -Compress; exit }; $reqStr = ''[[["jSf9Qc","[]",null,"generic"]]]''; $bodyStr = "f.req=" + [Uri]::EscapeDataString($reqStr) + "&at=" + [Uri]::EscapeDataString($at); $postUrl = "https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=jSf9Qc&source-path=%2Fusage"; if ($bl) { $postUrl += "&bl=" + [Uri]::EscapeDataString($bl) }; if ($fsid) { $postUrl += "&f.sid=" + [Uri]::EscapeDataString($fsid) }; $postUrl += "&hl=en&_reqid=$(Get-Random -Min 1000000 -Max 9999999)&rt=c"; $resp = Invoke-RestMethod -Uri $postUrl -Headers $hdrs -WebSession $session -Method Post -Body $bodyStr -ContentType "application/x-www-form-urlencoded;charset=UTF-8" -ErrorAction Stop; if ($resp -match ''"jSf9Qc","(\[.*?\])"'') { $payload = ConvertFrom-Json $Matches[1]; $items = $payload[1]; $fivePercent = $null; $weekPercent = $null; foreach ($item in $items) { $rem = [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round((1.0 - [double]$item[1]) * 100.0, 1))); if ($item[2] -eq 1) { $fivePercent = $rem } elseif ($item[2] -eq 2) { $weekPercent = $rem } }; [PSCustomObject]@{ fiveHourRemainingPercent = $fivePercent; weeklyRemainingPercent = $weekPercent } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Unexpected API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
-    $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { [PSCustomObject]@{ fiveHourUsedPercent = $resp.rate_limit.primary_window.used_percent; weeklyUsedPercent = $resp.rate_limit.secondary_window.used_percent } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
-    $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { [PSCustomObject]@{ fiveHourUsedPercent = $resp.five_hour.utilization; weeklyUsedPercent = $resp.seven_day.utilization } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $f = $resp.five_hour; $w = $resp.seven_day; $fReset = $f.resets_at; if (-not $fReset) { $fReset = $f.reset_at }; if (-not $fReset) { $fReset = $f.resetsAt }; $wReset = $w.resets_at; if (-not $wReset) { $wReset = $w.reset_at }; if (-not $wReset) { $wReset = $w.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $f.utilization; weeklyUsedPercent = $w.utilization; fiveHourResetAt = $fReset; weeklyResetAt = $wReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
 
     if (-not (Test-Path -LiteralPath $Path)) {
         $settings = New-DefaultTokenSettings
@@ -192,6 +192,18 @@ function Read-TokenMonitorSettings {
                 $migrated = $true
             }
             elseif ($provider.Id -eq 'claude' -and [string]::IsNullOrWhiteSpace($provider.Command)) {
+                $provider.Command = $defaultClaudeCommand
+                $migrated = $true
+            }
+            elseif ($provider.Id -eq 'codex' -and
+                ([string]$provider.Command).IndexOf('https://chatgpt.com/backend-api/wham/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                ([string]$provider.Command).IndexOf('fiveHourResetAt', [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+                $provider.Command = $defaultCodexCommand
+                $migrated = $true
+            }
+            elseif ($provider.Id -eq 'claude' -and
+                ([string]$provider.Command).IndexOf('https://api.anthropic.com/api/oauth/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                ([string]$provider.Command).IndexOf('fiveHourResetAt', [StringComparison]::OrdinalIgnoreCase) -lt 0) {
                 $provider.Command = $defaultClaudeCommand
                 $migrated = $true
             }
@@ -348,6 +360,43 @@ function ConvertTo-TokenDoubleOrNull {
     }
 
     return $null
+}
+
+function ConvertTo-ResetHoursOrNull {
+    param(
+        $Value,
+        [Parameter(Mandatory = $true)][DateTime]$NowUtc
+    )
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    $number = ConvertTo-TokenDoubleOrNull -Value $Value
+    if ($null -ne $number) {
+        return [Math]::Max(0.0, [double]$number)
+    }
+
+    $resetAtUtc = ConvertTo-TokenDateTime -Value $Value
+    if ($null -eq $resetAtUtc) {
+        return $null
+    }
+
+    return [Math]::Max(0.0, (([DateTime]$resetAtUtc) - $NowUtc).TotalHours)
+}
+
+function Get-ResetHoursFromAt {
+    param(
+        $Value,
+        [Parameter(Mandatory = $true)][DateTime]$NowUtc
+    )
+
+    $resetAtUtc = ConvertTo-TokenDateTime -Value $Value
+    if ($null -eq $resetAtUtc) {
+        return $null
+    }
+
+    return [Math]::Max(0.0, (([DateTime]$resetAtUtc) - $NowUtc).TotalHours)
 }
 
 function Get-JsonLineFieldValues {
@@ -847,6 +896,8 @@ function Get-TokenUsageSnapshot {
                 WeeklyUsed = 0L
                 FiveHourRemainingPercent = $null
                 WeeklyRemainingPercent = $null
+                FiveHourResetHours = $null
+                WeeklyResetHours = $null
                 Events = 0
                 Files = 0
                 LastEventLocal = $null
@@ -869,6 +920,8 @@ function Get-TokenUsageSnapshot {
             $weeklyRemainingPercent = Get-RemainingPercent -Used $weeklyUsed -Limit $weekLimit
             $fiveHourUsedDisplay = Format-TokenCount -Value $fiveHourUsed
             $weeklyUsedDisplay = Format-TokenCount -Value $weeklyUsed
+            $fiveHourResetHours = $null
+            $weeklyResetHours = $null
             
             $commandStatus = 'Command OK'
             $commandData = Invoke-TokenProviderCommand -Provider $provider
@@ -894,6 +947,19 @@ function Get-TokenUsageSnapshot {
                     $commandWeekRemaining = ConvertTo-TokenDoubleOrNull (Get-PropertyByNames -Object $commandData -Names @('weeklyRemainingPercent', 'weekRemainingPercent', 'sevenDayRemainingPercent', 'remaining7dPercent'))
                     $commandFiveUsedPercent = ConvertTo-TokenDoubleOrNull (Get-PropertyByNames -Object $commandData -Names @('fiveHourUsedPercent', 'five_hour_used_percent', 'used5hPercent'))
                     $commandWeekUsedPercent = ConvertTo-TokenDoubleOrNull (Get-PropertyByNames -Object $commandData -Names @('weeklyUsedPercent', 'weekUsedPercent', 'sevenDayUsedPercent', 'used7dPercent'))
+                    $commandFiveResetAt = Get-PropertyByNames -Object $commandData -Names @('fiveHourResetAt', 'fiveHourResetAtUtc', 'five_hour_reset_at', 'five_hour_reset_at_utc', 'reset5hAt', 'resets5hAt')
+                    $commandWeekResetAt = Get-PropertyByNames -Object $commandData -Names @('weeklyResetAt', 'weeklyResetAtUtc', 'weekResetAt', 'sevenDayResetAt', 'sevenDayResetAtUtc', 'weekly_reset_at', 'seven_day_reset_at', 'reset7dAt', 'resets7dAt')
+                    $commandFiveResetHours = Get-PropertyByNames -Object $commandData -Names @('fiveHourResetHours', 'fiveHourResetsInHours', 'five_hour_reset_hours', 'reset5hHours', 'resets5hInHours')
+                    $commandWeekResetHours = Get-PropertyByNames -Object $commandData -Names @('weeklyResetHours', 'weeklyResetsInHours', 'weekResetHours', 'sevenDayResetHours', 'sevenDayResetsInHours', 'weekly_reset_hours', 'seven_day_reset_hours', 'reset7dHours', 'resets7dInHours')
+
+                    $fiveHourResetHours = Get-ResetHoursFromAt -Value $commandFiveResetAt -NowUtc $nowUtc
+                    if ($null -eq $fiveHourResetHours) {
+                        $fiveHourResetHours = ConvertTo-ResetHoursOrNull -Value $commandFiveResetHours -NowUtc $nowUtc
+                    }
+                    $weeklyResetHours = Get-ResetHoursFromAt -Value $commandWeekResetAt -NowUtc $nowUtc
+                    if ($null -eq $weeklyResetHours) {
+                        $weeklyResetHours = ConvertTo-ResetHoursOrNull -Value $commandWeekResetHours -NowUtc $nowUtc
+                    }
 
                     if ($null -ne $commandFiveRemaining) {
                         $fiveHourRemainingPercent = [Math]::Max(0, [Math]::Min(100, [Math]::Round([double]$commandFiveRemaining, 1)))
@@ -930,6 +996,8 @@ function Get-TokenUsageSnapshot {
                 WeeklyUsedDisplay = $weeklyUsedDisplay
                 FiveHourRemainingPercent = $fiveHourRemainingPercent
                 WeeklyRemainingPercent = $weeklyRemainingPercent
+                FiveHourResetHours = $fiveHourResetHours
+                WeeklyResetHours = $weeklyResetHours
                 Events = 0
                 Files = 0
                 LastEventLocal = $null
@@ -961,6 +1029,8 @@ function Get-TokenUsageSnapshot {
         $weeklyRemainingPercent = Get-RemainingPercent -Used $weeklyUsed -Limit $weekLimit
         $fiveHourUsedDisplay = Format-TokenCount -Value $fiveHourUsed
         $weeklyUsedDisplay = Format-TokenCount -Value $weeklyUsed
+        $fiveHourResetHours = $null
+        $weeklyResetHours = $null
         $latestFiveHourLimitEvent = $events |
             Where-Object { $null -ne $_.FiveHourUsedPercent } |
             Sort-Object TimestampUtc -Descending |
@@ -977,6 +1047,7 @@ function Get-TokenUsageSnapshot {
             if ($null -ne $fiveHourRemainingPercent) {
                 $fiveHourUsedDisplay = ('{0:N0}% used' -f (100.0 - [double]$fiveHourRemainingPercent))
             }
+            $fiveHourResetHours = Get-ResetHoursFromAt -Value $latestFiveHourLimitEvent.FiveHourResetAtUtc -NowUtc $nowUtc
         }
         if ($weekLimit -le 0 -and $null -ne $latestWeeklyLimitEvent -and $null -ne $latestWeeklyLimitEvent.WeeklyUsedPercent) {
             $weeklyRemainingPercent = Get-RemainingPercentFromRateLimit `
@@ -986,6 +1057,7 @@ function Get-TokenUsageSnapshot {
             if ($null -ne $weeklyRemainingPercent) {
                 $weeklyUsedDisplay = ('{0:N0}% used' -f (100.0 - [double]$weeklyRemainingPercent))
             }
+            $weeklyResetHours = Get-ResetHoursFromAt -Value $latestWeeklyLimitEvent.WeeklyResetAtUtc -NowUtc $nowUtc
         }
 
         $status = 'OK'
@@ -1011,6 +1083,8 @@ function Get-TokenUsageSnapshot {
             WeeklyUsedDisplay = $weeklyUsedDisplay
             FiveHourRemainingPercent = $fiveHourRemainingPercent
             WeeklyRemainingPercent = $weeklyRemainingPercent
+            FiveHourResetHours = $fiveHourResetHours
+            WeeklyResetHours = $weeklyResetHours
             Events = $events.Count
             Files = $files.Count
             LastEventLocal = $lastLocal
@@ -1048,6 +1122,23 @@ function Format-Percent {
     return ('{0:N0}%' -f [double]$Value)
 }
 
+function Format-ResetHours {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return 'n/a'
+    }
+
+    $hours = [Math]::Max(0.0, [double]$Value)
+    if ($hours -lt 0.05) {
+        return 'now'
+    }
+    if ($hours -lt 1.0) {
+        return ('{0:N0}m' -f [Math]::Max(1, [Math]::Round($hours * 60.0)))
+    }
+    return ('{0:N1}h' -f $hours)
+}
+
 function Format-ProviderWindowPercent {
     param(
         $Provider,
@@ -1067,17 +1158,37 @@ function Format-TooltipPercentNumber {
     param($Value)
 
     if ($null -eq $Value) {
-        return '--'
+        return '-'
     }
-    return ('{0:00}' -f [Math]::Max(0, [Math]::Min(99, [int][Math]::Round([double]$Value))))
+    $number = [Math]::Max(0, [Math]::Min(100, [int][Math]::Round([double]$Value)))
+    return ('{0:00}' -f $number)
+}
+
+function Format-TooltipTimeNumber {
+    param(
+        $Value,
+        [double]$Divisor = 1.0
+    )
+
+    if ($null -eq $Value) {
+        return '-'
+    }
+
+    $number = [double]$Value
+    if ($Divisor -gt 0) {
+        $number = $number / $Divisor
+    }
+    return [string]([Math]::Max(0, [int][Math]::Round($number)))
 }
 
 function Format-TokenUsageTooltip {
     param($Snapshot)
 
     $nameParts = New-Object System.Collections.Generic.List[string]
-    $fiveHourParts = New-Object System.Collections.Generic.List[string]
-    $weeklyParts = New-Object System.Collections.Generic.List[string]
+    $fiveHourPercentParts = New-Object System.Collections.Generic.List[string]
+    $fiveHourResetParts = New-Object System.Collections.Generic.List[string]
+    $weeklyPercentParts = New-Object System.Collections.Generic.List[string]
+    $weeklyResetParts = New-Object System.Collections.Generic.List[string]
     foreach ($provider in @($Snapshot.Providers)) {
         if (-not $provider.Enabled) {
             continue
@@ -1091,15 +1202,17 @@ function Format-TokenUsageTooltip {
         }
 
         $nameParts.Add($shortName)
-        $fiveHourParts.Add((Format-TooltipPercentNumber -Value $provider.FiveHourRemainingPercent))
-        $weeklyParts.Add((Format-TooltipPercentNumber -Value $provider.WeeklyRemainingPercent))
+        $fiveHourPercentParts.Add((Format-TooltipPercentNumber -Value $provider.FiveHourRemainingPercent))
+        $fiveHourResetParts.Add((Format-TooltipTimeNumber -Value $provider.FiveHourResetHours))
+        $weeklyPercentParts.Add((Format-TooltipPercentNumber -Value $provider.WeeklyRemainingPercent))
+        $weeklyResetParts.Add((Format-TooltipTimeNumber -Value $provider.WeeklyResetHours -Divisor 24.0))
     }
 
     $text = 'TokenMonitor'
     if ($nameParts.Count -gt 0) {
         $text = ($nameParts -join '/')
-        $text += ("`n{0}" -f ($fiveHourParts -join '/'))
-        $text += ("`n{0}" -f ($weeklyParts -join '/'))
+        $text += ("`n{0} | {1}" -f ($fiveHourPercentParts -join '/'), ($fiveHourResetParts -join '/'))
+        $text += ("`n{0} | {1}" -f ($weeklyPercentParts -join '/'), ($weeklyResetParts -join '/'))
     }
 
     if ($text.Length -gt 63) {
@@ -1117,4 +1230,5 @@ Export-ModuleMember -Function `
     Get-TokenUsageSnapshot, `
     Format-TokenCount, `
     Format-Percent, `
+    Format-ResetHours, `
     Format-TokenUsageTooltip

@@ -49,11 +49,11 @@ Install `ps2exe`, then build the Windows tray executable from the repository roo
 
 ```powershell
 Install-Module ps2exe -Scope CurrentUser
-ps2exe .\src\TokenMonitor.ps1 .\TokenMonitor.exe -STA -noConsole -title TokenMonitor -product TokenMonitor -version 1.2.4 -embedFiles @{'.\TokenUsage.psm1'='.\src\TokenUsage.psm1'}
+ps2exe .\src\TokenMonitor.ps1 .\bin\TokenMonitor.exe -STA -noConsole -title TokenMonitor -product TokenMonitor -version 1.2.4 -embedFiles @{'.\TokenUsage.psm1'='.\src\TokenUsage.psm1'}
 ```
 
-The generated `TokenMonitor.exe` embeds `src\TokenUsage.psm1` and extracts it as `TokenUsage.psm1` beside the executable on first run.
-生成的 `TokenMonitor.exe` 会嵌入 `src\TokenUsage.psm1`，首次运行时会在 exe 所在目录旁释放为 `TokenUsage.psm1`。
+The generated release executable is `bin\TokenMonitor.exe`. It embeds `src\TokenUsage.psm1` and extracts it as `TokenUsage.psm1` beside the executable on first run.
+生成的 release 执行程序位于 `bin\TokenMonitor.exe`。它会嵌入 `src\TokenUsage.psm1`，首次运行时会在 exe 所在目录旁释放为 `TokenUsage.psm1`。
 
 ## Configure quotas / 配置额度
 
