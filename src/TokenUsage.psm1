@@ -1335,6 +1335,9 @@ function Format-TooltipPercentNumber {
         return '-'
     }
     $number = [Math]::Max(0, [Math]::Min(100, [int][Math]::Round([double]$Value)))
+    if ($number -eq 100) {
+        $number = 99
+    }
     return ('{0:00}' -f $number)
 }
 
@@ -1393,11 +1396,22 @@ function Format-TokenUsageTooltip {
             default { $provider.Name }
         }
 
-        $nameParts.Add(('{0}:{1}' -f $shortName, (Format-TooltipHealthCode -Provider $provider)))
+        $nameParts.Add($shortName)
         $fiveHourPercentParts.Add((Format-TooltipPercentNumber -Value $provider.FiveHourRemainingPercent))
-        $fiveHourResetParts.Add((Format-TooltipTimeNumber -Value $provider.FiveHourResetHours))
+        
+        $fiveHourResetVal = $provider.FiveHourResetHours
+        if ($null -ne $provider.FiveHourRemainingPercent -and $provider.FiveHourRemainingPercent -ge 100) {
+            $fiveHourResetVal = 5.0
+        }
+        $fiveHourResetParts.Add((Format-TooltipTimeNumber -Value $fiveHourResetVal))
+
         $weeklyPercentParts.Add((Format-TooltipPercentNumber -Value $provider.WeeklyRemainingPercent))
-        $weeklyResetParts.Add((Format-TooltipTimeNumber -Value $provider.WeeklyResetHours -Divisor 24.0))
+        
+        $weeklyResetVal = $provider.WeeklyResetHours
+        if ($null -ne $provider.WeeklyRemainingPercent -and $provider.WeeklyRemainingPercent -ge 100) {
+            $weeklyResetVal = 168.0
+        }
+        $weeklyResetParts.Add((Format-TooltipTimeNumber -Value $weeklyResetVal -Divisor 24.0))
     }
 
     $text = 'TokenMonitor'
