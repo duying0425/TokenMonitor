@@ -1063,9 +1063,19 @@ function Format-ProviderWindowPercent {
     return 'n/a'
 }
 
+function Format-TooltipPercentNumber {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return '--'
+    }
+    return ('{0:00}' -f [Math]::Max(0, [Math]::Min(99, [int][Math]::Round([double]$Value))))
+}
+
 function Format-TokenUsageTooltip {
     param($Snapshot)
 
+    $nameParts = New-Object System.Collections.Generic.List[string]
     $fiveHourParts = New-Object System.Collections.Generic.List[string]
     $weeklyParts = New-Object System.Collections.Generic.List[string]
     foreach ($provider in @($Snapshot.Providers)) {
@@ -1074,22 +1084,22 @@ function Format-TokenUsageTooltip {
         }
 
         $shortName = switch ($provider.Id) {
-            'antigravity' { 'G' }
-            'codex' { 'C' }
-            'claude' { 'Cl' }
+            'antigravity' { 'Gemini' }
+            'codex' { 'Codex' }
+            'claude' { 'Claude' }
             default { $provider.Name }
         }
 
-        $fiveHourParts.Add(('{0}:{1}' -f $shortName, (Format-ProviderWindowPercent -Provider $provider -Window '5h')))
-        $weeklyParts.Add(('{0}:{1}' -f $shortName, (Format-ProviderWindowPercent -Provider $provider -Window '7d')))
+        $nameParts.Add($shortName)
+        $fiveHourParts.Add((Format-TooltipPercentNumber -Value $provider.FiveHourRemainingPercent))
+        $weeklyParts.Add((Format-TooltipPercentNumber -Value $provider.WeeklyRemainingPercent))
     }
 
     $text = 'TokenMonitor'
-    if ($fiveHourParts.Count -gt 0 -or $weeklyParts.Count -gt 0) {
-        $text = ('5h {0}' -f ($fiveHourParts -join ' '))
-        if ($weeklyParts.Count -gt 0) {
-            $text += ("`n7d {0}" -f ($weeklyParts -join ' '))
-        }
+    if ($nameParts.Count -gt 0) {
+        $text = ($nameParts -join '/')
+        $text += ("`n{0}" -f ($fiveHourParts -join '/'))
+        $text += ("`n{0}" -f ($weeklyParts -join '/'))
     }
 
     if ($text.Length -gt 63) {
