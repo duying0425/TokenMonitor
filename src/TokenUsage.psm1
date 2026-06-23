@@ -82,7 +82,7 @@ function New-DefaultTokenSettings {
     $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $f = $resp.five_hour; $w = $resp.seven_day; $fReset = $f.resets_at; if (-not $fReset) { $fReset = $f.reset_at }; if (-not $fReset) { $fReset = $f.resetsAt }; $wReset = $w.resets_at; if (-not $wReset) { $wReset = $w.reset_at }; if (-not $wReset) { $wReset = $w.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $f.utilization; weeklyUsedPercent = $w.utilization; fiveHourResetAt = $fReset; weeklyResetAt = $wReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
 
     return [ordered]@{
-        RefreshSeconds = 60
+        RefreshSeconds = 600
         MaxFileSizeMB = 20
         ShowStatusStrip = $true
         Providers = @(
@@ -158,7 +158,7 @@ function Read-TokenMonitorSettings {
     }
 
     if (-not (Get-Member -InputObject $settings -Name RefreshSeconds -MemberType NoteProperty -ErrorAction SilentlyContinue)) {
-        $settings | Add-Member -NotePropertyName RefreshSeconds -NotePropertyValue 60
+        $settings | Add-Member -NotePropertyName RefreshSeconds -NotePropertyValue 600
     }
     if (-not (Get-Member -InputObject $settings -Name MaxFileSizeMB -MemberType NoteProperty -ErrorAction SilentlyContinue)) {
         $settings | Add-Member -NotePropertyName MaxFileSizeMB -NotePropertyValue 20
@@ -757,6 +757,142 @@ function Get-RemainingPercentFromRateLimit {
     return [Math]::Max(0, [Math]::Min(100, [Math]::Round(100.0 - [double]$UsedPercent, 1)))
 }
 
+function Test-TokenProviderStatusOk {
+    param($Status)
+
+    $text = [string]$Status
+    return ([string]::IsNullOrWhiteSpace($text) -or $text -eq 'OK' -or $text -eq 'Command OK')
+}
+
+function New-TokenHealthText {
+    param([string]$State)
+
+    switch ($State) {
+        'disabled' { return (-join ([char[]](24050, 20572, 29992))) }
+        'empty' { return (-join ([char[]](27809, 26377, 20102))) }
+        'low' { return (-join ([char[]](39532, 19978, 23601, 27809, 20102))) }
+        'medium' { return (-join ([char[]](29992, 20102, 19981, 23569, 20102))) }
+        'good' { return (-join ([char[]](36824, 21097, 24456, 22810))) }
+        default { return (-join ([char[]](26080, 27861, 26816, 27979))) }
+    }
+}
+
+function Get-ProviderTokenHealth {
+    param(
+        [bool]$Enabled = $true,
+        $Status,
+        $FiveHourRemainingPercent,
+        $WeeklyRemainingPercent,
+        $FiveHourResetHours,
+        $WeeklyResetHours
+    )
+
+    $state = 'unknown'
+    $text = New-TokenHealthText -State $state
+    $percent = $null
+    $window = $null
+    $confidence = 'none'
+    $reason = [string]$Status
+
+    if (-not $Enabled) {
+        return [pscustomobject]@{
+            State = 'disabled'
+            Text = (New-TokenHealthText -State 'disabled')
+            Percent = $null
+            Window = $null
+            Confidence = 'none'
+            Reason = 'Disabled'
+        }
+    }
+
+    $hasFive = $null -ne $FiveHourRemainingPercent
+    $hasWeek = $null -ne $WeeklyRemainingPercent
+    if ($hasFive -and $hasWeek) {
+        $confidence = 'high'
+    }
+    elseif ($hasFive -or $hasWeek) {
+        $confidence = 'partial'
+    }
+
+    if (-not $hasFive -and -not $hasWeek) {
+        return [pscustomobject]@{
+            State = 'unknown'
+            Text = (New-TokenHealthText -State 'unknown')
+            Percent = $null
+            Window = $null
+            Confidence = $confidence
+            Reason = $reason
+        }
+    }
+
+    $five = $null
+    $week = $null
+    if ($hasFive) {
+        $five = [Math]::Max(0, [Math]::Min(100, [double]$FiveHourRemainingPercent))
+    }
+    if ($hasWeek) {
+        $week = [Math]::Max(0, [Math]::Min(100, [double]$WeeklyRemainingPercent))
+    }
+
+    if (($null -ne $five -and $five -le 0) -or ($null -ne $week -and $week -le 0)) {
+        $state = 'empty'
+        $text = New-TokenHealthText -State $state
+        if ($null -ne $five -and ($null -eq $week -or $five -le $week)) {
+            $percent = $five
+            $window = '5h'
+        }
+        else {
+            $percent = $week
+            $window = '7d'
+        }
+    }
+    elseif ($null -ne $week -and $week -le 10) {
+        $state = 'low'
+        $text = New-TokenHealthText -State $state
+        $percent = $week
+        $window = '7d'
+    }
+    elseif ($null -ne $five -and $five -le 15) {
+        $state = 'low'
+        $text = New-TokenHealthText -State $state
+        $percent = $five
+        $window = '5h'
+    }
+    elseif ($null -ne $five -and $five -le 50) {
+        $state = 'medium'
+        $text = New-TokenHealthText -State $state
+        $percent = $five
+        $window = '5h'
+    }
+    elseif ($null -ne $five) {
+        $state = 'good'
+        $text = New-TokenHealthText -State $state
+        $percent = $five
+        $window = '5h'
+    }
+    else {
+        $state = 'unknown'
+        $text = New-TokenHealthText -State $state
+        $percent = $week
+        $window = '7d'
+    }
+
+    if ($state -eq 'unknown' -and -not (Test-TokenProviderStatusOk -Status $Status)) {
+        $reason = [string]$Status
+    }
+
+    return [pscustomobject]@{
+        State = $state
+        Text = $text
+        Percent = $percent
+        Window = $window
+        Confidence = $confidence
+        Reason = $reason
+        FiveHourResetHours = $FiveHourResetHours
+        WeeklyResetHours = $WeeklyResetHours
+    }
+}
+
 function Get-TokenWindowUsage {
     param(
         [Parameter(Mandatory = $true)]$Events,
@@ -886,6 +1022,13 @@ function Get-TokenUsageSnapshot {
         }
 
         if (-not $enabled) {
+            $health = Get-ProviderTokenHealth `
+                -Enabled $false `
+                -Status 'Disabled' `
+                -FiveHourRemainingPercent $null `
+                -WeeklyRemainingPercent $null `
+                -FiveHourResetHours $null `
+                -WeeklyResetHours $null
             $providers.Add([pscustomobject]@{
                 Id = $provider.Id
                 Name = $provider.Name
@@ -902,6 +1045,11 @@ function Get-TokenUsageSnapshot {
                 Files = 0
                 LastEventLocal = $null
                 Status = 'Disabled'
+                HealthState = $health.State
+                HealthText = $health.Text
+                HealthPercent = $health.Percent
+                HealthWindow = $health.Window
+                HealthConfidence = $health.Confidence
             })
             continue
         }
@@ -984,6 +1132,14 @@ function Get-TokenUsageSnapshot {
                 $commandStatus = 'Command produced no output'
             }
 
+            $health = Get-ProviderTokenHealth `
+                -Enabled $true `
+                -Status $commandStatus `
+                -FiveHourRemainingPercent $fiveHourRemainingPercent `
+                -WeeklyRemainingPercent $weeklyRemainingPercent `
+                -FiveHourResetHours $fiveHourResetHours `
+                -WeeklyResetHours $weeklyResetHours
+
             $providers.Add([pscustomobject]@{
                 Id = $provider.Id
                 Name = $provider.Name
@@ -1002,6 +1158,11 @@ function Get-TokenUsageSnapshot {
                 Files = 0
                 LastEventLocal = $null
                 Status = $commandStatus
+                HealthState = $health.State
+                HealthText = $health.Text
+                HealthPercent = $health.Percent
+                HealthWindow = $health.Window
+                HealthConfidence = $health.Confidence
             })
             continue
         }
@@ -1071,6 +1232,14 @@ function Get-TokenUsageSnapshot {
             $status = 'Set quota'
         }
 
+        $health = Get-ProviderTokenHealth `
+            -Enabled $true `
+            -Status $status `
+            -FiveHourRemainingPercent $fiveHourRemainingPercent `
+            -WeeklyRemainingPercent $weeklyRemainingPercent `
+            -FiveHourResetHours $fiveHourResetHours `
+            -WeeklyResetHours $weeklyResetHours
+
         $providers.Add([pscustomobject]@{
             Id = $provider.Id
             Name = $provider.Name
@@ -1089,6 +1258,11 @@ function Get-TokenUsageSnapshot {
             Files = $files.Count
             LastEventLocal = $lastLocal
             Status = $status
+            HealthState = $health.State
+            HealthText = $health.Text
+            HealthPercent = $health.Percent
+            HealthWindow = $health.Window
+            HealthConfidence = $health.Confidence
         })
     }
 
@@ -1181,6 +1355,24 @@ function Format-TooltipTimeNumber {
     return [string]([Math]::Max(0, [int][Math]::Round($number)))
 }
 
+function Format-TooltipHealthCode {
+    param($Provider)
+
+    $state = $null
+    if (Get-Member -InputObject $Provider -Name HealthState -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+        $state = [string]$Provider.HealthState
+    }
+
+    switch ($state) {
+        'empty' { return 'OUT' }
+        'low' { return 'LOW' }
+        'medium' { return 'MID' }
+        'good' { return 'OK' }
+        'disabled' { return 'OFF' }
+        default { return 'n/a' }
+    }
+}
+
 function Format-TokenUsageTooltip {
     param($Snapshot)
 
@@ -1201,7 +1393,7 @@ function Format-TokenUsageTooltip {
             default { $provider.Name }
         }
 
-        $nameParts.Add($shortName)
+        $nameParts.Add(('{0}:{1}' -f $shortName, (Format-TooltipHealthCode -Provider $provider)))
         $fiveHourPercentParts.Add((Format-TooltipPercentNumber -Value $provider.FiveHourRemainingPercent))
         $fiveHourResetParts.Add((Format-TooltipTimeNumber -Value $provider.FiveHourResetHours))
         $weeklyPercentParts.Add((Format-TooltipPercentNumber -Value $provider.WeeklyRemainingPercent))
@@ -1232,3 +1424,4 @@ Export-ModuleMember -Function `
     Format-Percent, `
     Format-ResetHours, `
     Format-TokenUsageTooltip
+

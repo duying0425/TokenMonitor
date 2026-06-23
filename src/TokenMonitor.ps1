@@ -25,6 +25,23 @@ Import-Module $modulePath -Force
 $script:SettingsPath = Get-TokenMonitorSettingsPath
 $script:Settings = Read-TokenMonitorSettings -Path $script:SettingsPath
 
+function Format-ProviderHealthCell {
+    param($Provider)
+
+    if (-not (Get-Member -InputObject $Provider -Name HealthText -MemberType NoteProperty -ErrorAction SilentlyContinue)) {
+        return 'n/a'
+    }
+
+    $text = [string]$Provider.HealthText
+    if (Get-Member -InputObject $Provider -Name HealthWindow -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$Provider.HealthWindow) -and
+            $null -ne $Provider.HealthPercent) {
+            $text += (' ({0} {1})' -f $Provider.HealthWindow, (Format-Percent $Provider.HealthPercent))
+        }
+    }
+    return $text
+}
+
 function Write-Snapshot {
     param($Snapshot)
 
@@ -38,8 +55,10 @@ function Write-Snapshot {
             $weeklyUsed = $provider.WeeklyUsedDisplay
         }
 
-        $line = '{0}: 5h {1}/{2} ({3} left, reset {4}), 7d {5}/{6} ({7} left, reset {8}), files {9}, events {10}, {11}' -f `
+        $health = Format-ProviderHealthCell -Provider $provider
+        $line = '{0}: {1}, 5h {2}/{3} ({4} left, reset {5}), 7d {6}/{7} ({8} left, reset {9}), files {10}, events {11}, {12}' -f `
             $provider.Name,
+            $health,
             $fiveHourUsed,
             (Format-TokenCount $provider.FiveHourLimit),
             (Format-Percent $provider.FiveHourRemainingPercent),
@@ -115,21 +134,6 @@ function Format-DateCell {
     return ([DateTime]$Value).ToString('yyyy-MM-dd HH:mm')
 }
 
-function Get-ProviderRemainingPercent {
-    param($Provider)
-
-    if ($null -ne $Provider.FiveHourRemainingPercent -and $null -ne $Provider.WeeklyRemainingPercent) {
-        return [Math]::Min([double]$Provider.FiveHourRemainingPercent, [double]$Provider.WeeklyRemainingPercent)
-    }
-    if ($null -ne $Provider.FiveHourRemainingPercent) {
-        return [double]$Provider.FiveHourRemainingPercent
-    }
-    if ($null -ne $Provider.WeeklyRemainingPercent) {
-        return [double]$Provider.WeeklyRemainingPercent
-    }
-    return $null
-}
-
 function Get-StatusStripText {
     param($Snapshot)
 
@@ -150,6 +154,8 @@ function Get-StatusStripText {
             default { $provider.Name }
         }
 
+        $health = Format-ProviderHealthCell -Provider $provider
+        $parts.Add(('{0} {1}' -f $name, $health))
         $parts.Add(('{0} 5h {1}, reset {2}' -f $name, (Format-Percent $provider.FiveHourRemainingPercent), (Format-ResetHours $provider.FiveHourResetHours)))
         $parts.Add(('{0} 7d {1}, reset {2}' -f $name, (Format-Percent $provider.WeeklyRemainingPercent), (Format-ResetHours $provider.WeeklyResetHours)))
     }
@@ -160,24 +166,17 @@ function Get-StatusStripText {
     return ($parts -join [Environment]::NewLine)
 }
 
-function Get-WorstRemainingPercent {
-    param($Snapshot)
+function Get-HealthStateColor {
+    param($HealthState)
 
-    $worst = $null
-    if ($null -eq $Snapshot) {
-        return $worst
+    switch ([string]$HealthState) {
+        'empty' { return [System.Drawing.Color]::FromArgb(210, 35, 35) }
+        'low' { return [System.Drawing.Color]::FromArgb(235, 95, 25) }
+        'medium' { return [System.Drawing.Color]::FromArgb(220, 165, 30) }
+        'good' { return [System.Drawing.Color]::FromArgb(40, 175, 95) }
+        'disabled' { return [System.Drawing.Color]::FromArgb(80, 80, 80) }
+        default { return [System.Drawing.Color]::FromArgb(125, 125, 125) }
     }
-
-    foreach ($provider in @($Snapshot.Providers)) {
-        $percent = Get-ProviderRemainingPercent -Provider $provider
-        if ($null -eq $percent) {
-            continue
-        }
-        if ($null -eq $worst -or [double]$percent -lt [double]$worst) {
-            $worst = [double]$percent
-        }
-    }
-    return $worst
 }
 
 function Update-DynamicTrayIcon {
@@ -219,24 +218,7 @@ function Update-DynamicTrayIcon {
         $startAngle = 270.0
 
         foreach ($provider in $enabledProviders) {
-            # Determine color based on provider's remaining percent
-            $percent = Get-ProviderRemainingPercent -Provider $provider
-            $color = [System.Drawing.Color]::FromArgb(100, 100, 100) # Gray if n/a
-            
-            if ($provider.Status -ne 'OK') {
-                $color = [System.Drawing.Color]::FromArgb(200, 100, 0) # Warning Orange/Brown if error
-            }
-            elseif ($null -ne $percent) {
-                if ($percent -le 15) {
-                    $color = [System.Drawing.Color]::FromArgb(220, 40, 40) # Red
-                }
-                elseif ($percent -le 30) {
-                    $color = [System.Drawing.Color]::FromArgb(230, 130, 20) # Orange
-                }
-                else {
-                    $color = [System.Drawing.Color]::FromArgb(40, 180, 100) # Green
-                }
-            }
+            $color = Get-HealthStateColor -HealthState $provider.HealthState
 
             # Draw the segment
             $pen = New-Object System.Drawing.Pen $color, 2.5
@@ -285,6 +267,7 @@ function Update-DashboardGrid {
 
         [void]$script:Grid.Rows.Add(
             $provider.Name,
+            (Format-ProviderHealthCell -Provider $provider),
             $fiveHourUsed,
             (Format-TokenCount $provider.FiveHourLimit),
             (Format-Percent $provider.FiveHourRemainingPercent),
@@ -300,13 +283,7 @@ function Update-DashboardGrid {
         )
 
         $row = $script:Grid.Rows[$script:Grid.Rows.Count - 1]
-        if ($provider.Status -ne 'OK') {
-            $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::DarkOrange
-        }
-        elseif (($null -ne $provider.FiveHourRemainingPercent -and [double]$provider.FiveHourRemainingPercent -le 15) -or
-            ($null -ne $provider.WeeklyRemainingPercent -and [double]$provider.WeeklyRemainingPercent -le 15)) {
-            $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::Firebrick
-        }
+        $row.DefaultCellStyle.ForeColor = Get-HealthStateColor -HealthState $provider.HealthState
     }
 
     if ($null -ne $script:StatusLabel) {
@@ -398,6 +375,7 @@ function Show-Dashboard {
 
     foreach ($column in @(
         @('Provider', 'Provider'),
+        @('Health', 'Health'),
         @('FiveHourUsed', '5h used'),
         @('FiveHourLimit', '5h quota'),
         @('FiveHourLeft', '5h left'),
