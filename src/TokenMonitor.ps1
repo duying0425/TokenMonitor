@@ -6,6 +6,9 @@ param(
 Set-StrictMode -Version Latest
 
 $modulePath = Join-Path $PSScriptRoot 'TokenUsage.psm1'
+if (-not (Test-Path -LiteralPath $modulePath)) {
+    $modulePath = Join-Path (Join-Path $PSScriptRoot 'src') 'TokenUsage.psm1'
+}
 Import-Module $modulePath -Force
 
 $script:SettingsPath = Get-TokenMonitorSettingsPath
