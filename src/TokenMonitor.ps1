@@ -137,18 +137,14 @@ function Get-StatusStripText {
             default { $provider.Name }
         }
 
-        $percent = Get-ProviderRemainingPercent -Provider $provider
-        $text = 'n/a'
-        if ($null -ne $percent) {
-            $text = ('{0:N1}%' -f [double]$percent)
-        }
-        $parts.Add(('{0} {1}' -f $name, $text))
+        $parts.Add(('{0} 5h {1}' -f $name, (Format-Percent $provider.FiveHourRemainingPercent)))
+        $parts.Add(('{0} 7d {1}' -f $name, (Format-Percent $provider.WeeklyRemainingPercent)))
     }
 
     if ($parts.Count -eq 0) {
         return 'TokenMonitor n/a'
     }
-    return ($parts -join ' | ')
+    return ($parts -join [Environment]::NewLine)
 }
 
 function Get-WorstRemainingPercent {
