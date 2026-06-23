@@ -76,8 +76,67 @@ function New-ProviderConfig {
     }
 }
 
+function Get-DefaultAntigravityCommand {
+    return @'
+$mainLog = Join-Path $env:APPDATA "Antigravity\logs\main.log"
+if (-not (Test-Path -LiteralPath $mainLog)) {
+    [PSCustomObject]@{ Error = "No Antigravity main.log; start Antigravity first" } | ConvertTo-Json -Compress
+    exit
+}
+try {
+    $log = Get-Content -LiteralPath $mainLog -Raw -ErrorAction Stop
+    $csrfMatches = [regex]::Matches($log, "--csrf_token\s+([0-9a-fA-F-]+)")
+    $portMatches = [regex]::Matches($log, "Local:\s+https://127\.0\.0\.1:(\d+)/")
+    if ($csrfMatches.Count -eq 0 -or $portMatches.Count -eq 0) {
+        [PSCustomObject]@{ Error = "Could not find active Antigravity local service in main.log" } | ConvertTo-Json -Compress
+        exit
+    }
+
+    $csrf = $csrfMatches[$csrfMatches.Count - 1].Groups[1].Value
+    $port = $portMatches[$portMatches.Count - 1].Groups[1].Value
+    $url = "https://127.0.0.1:$port/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary"
+
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    $headers = @{ "x-codeium-csrf-token" = $csrf }
+    $resp = Invoke-RestMethod -Uri $url -Method Post -Headers $headers -Body "{}" -ContentType "application/json" -ErrorAction Stop
+    $groups = @($resp.response.groups)
+    $geminiGroup = $groups | Where-Object { $_.displayName -eq "Gemini Models" } | Select-Object -First 1
+    if (-not $geminiGroup) {
+        [PSCustomObject]@{ Error = "Gemini Models quota group not found in Antigravity response" } | ConvertTo-Json -Compress
+        exit
+    }
+
+    $weekly = @($geminiGroup.buckets) | Where-Object { $_.window -eq "weekly" -or $_.bucketId -eq "gemini-weekly" } | Select-Object -First 1
+    $five = @($geminiGroup.buckets) | Where-Object { $_.window -eq "5h" -or $_.bucketId -eq "gemini-5h" } | Select-Object -First 1
+
+    $weeklyRemaining = $null
+    $fiveRemaining = $null
+    if ($weekly -and $null -ne $weekly.remainingFraction) {
+        $weeklyRemaining = [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round([double]$weekly.remainingFraction * 100.0, 1)))
+    }
+    if ($five -and $null -ne $five.remainingFraction) {
+        $fiveRemaining = [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round([double]$five.remainingFraction * 100.0, 1)))
+        if ($five.disabled) {
+            $fiveRemaining = 0.0
+        }
+    }
+
+    [PSCustomObject]@{
+        fiveHourRemainingPercent = $fiveRemaining
+        weeklyRemainingPercent = $weeklyRemaining
+        fiveHourResetAt = $five.resetTime
+        weeklyResetAt = $weekly.resetTime
+    } | ConvertTo-Json -Compress
+}
+catch {
+    [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+'@
+}
+
 function New-DefaultTokenSettings {
-    $defaultGeminiCommand = '$Signatures = ''using System; using System.Runtime.InteropServices; namespace Win32 { public class CredManager { [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CredRead(string target, uint type, int reserved, out IntPtr credentialPtr); [DllImport("advapi32.dll", EntryPoint = "CredFree", SetLastError = true)] private static extern void CredFree(IntPtr credentialPtr); [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct CREDENTIAL { public uint Flags; public uint Type; public IntPtr TargetName; public IntPtr Comment; public long LastWritten; public uint CredentialBlobSize; public IntPtr CredentialBlob; public uint Persist; public uint AttributeCount; public IntPtr Attributes; public IntPtr TargetAlias; public IntPtr UserName; } public class CredentialResult { public string TargetName; public string UserName; public byte[] CredentialBlob; } public static CredentialResult ReadCredential(string target) { IntPtr ptr = IntPtr.Zero; if (CredRead(target, 1, 0, out ptr)) { try { CREDENTIAL cred = (CREDENTIAL)Marshal.PtrToStructure(ptr, typeof(CREDENTIAL)); CredentialResult res = new CredentialResult(); res.TargetName = Marshal.PtrToStringUni(cred.TargetName); res.UserName = Marshal.PtrToStringUni(cred.UserName); if (cred.CredentialBlobSize > 0) { res.CredentialBlob = new byte[cred.CredentialBlobSize]; Marshal.Copy(cred.CredentialBlob, res.CredentialBlob, 0, (int)cred.CredentialBlobSize); } return res; } finally { CredFree(ptr); } } return null; } } }''; if (-not ("Win32.CredManager" -as [type])) { Add-Type -TypeDefinition $Signatures }; $res = [Win32.CredManager]::ReadCredential("gemini:antigravity"); if ($null -eq $res) { [PSCustomObject]@{ Error = "No gemini:antigravity credential" } | ConvertTo-Json -Compress; exit }; try { $auth = ConvertFrom-Json ([System.Text.Encoding]::UTF8.GetString($res.CredentialBlob)); $accessToken = $auth.token.access_token; $refreshToken = $auth.token.refresh_token; $expiryStr = $auth.token.expiry; $needRefresh = $false; if ($expiryStr) { try { $expiry = [DateTime]::Parse($expiryStr); if ($expiry.AddMinutes(-5) -lt [DateTime]::Now) { $needRefresh = $true } } catch { $needRefresh = $true } } else { $needRefresh = $true }; $headers = @{ "User-Agent" = "Mozilla/5.0"; "Content-Type" = "application/json"; Authorization = "Bearer $accessToken"; "x-same-domain" = "1"; Origin = "chrome-extension://hup-antigravity" }; $body = @{ project = "norse-gauge-7zsgc" } | ConvertTo-Json -Compress; $response = $null; if (-not $needRefresh) { try { $response = Invoke-RestMethod -Uri "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota" -Method Post -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop } catch { $needRefresh = $true } }; if ($needRefresh) { $clientId = "1071006060591-" + "tmhssin2h21lcre235vtolojh" + "4g403ep.apps." + "googleusercontent.com"; $clientSecret = "GOCSPX-" + "K58FWR486LdL" + "J1mLB8sXC4" + "z6qDAf"; $refreshBody = @{ client_id = $clientId; client_secret = $clientSecret; refresh_token = $refreshToken; grant_type = "refresh_token" }; $refreshResp = Invoke-RestMethod -Uri "https://oauth2.googleapis.com/token" -Method Post -Body $refreshBody -ErrorAction Stop; $accessToken = $refreshResp.access_token; $headers["Authorization"] = "Bearer $accessToken"; $response = Invoke-RestMethod -Uri "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota" -Method Post -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop }; if ($response -and $response.buckets) { $minFraction = 1.0; $resetTime = $null; foreach ($bucket in $response.buckets) { if ($null -ne $bucket.remainingFraction -and $bucket.remainingFraction -lt $minFraction) { $minFraction = $bucket.remainingFraction }; if (-not $resetTime -and $bucket.resetTime) { $resetTime = $bucket.resetTime } }; $remainingPercent = [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round($minFraction * 100.0, 1))); [PSCustomObject]@{ fiveHourRemainingPercent = $remainingPercent; weeklyRemainingPercent = 100.0; fiveHourResetAt = $resetTime } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultGeminiCommand = Get-DefaultAntigravityCommand
     $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
     $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $f = $resp.five_hour; $w = $resp.seven_day; $fReset = $f.resets_at; if (-not $fReset) { $fReset = $f.reset_at }; if (-not $fReset) { $fReset = $f.resetsAt }; $wReset = $w.resets_at; if (-not $wReset) { $wReset = $w.reset_at }; if (-not $wReset) { $wReset = $w.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $f.utilization; weeklyUsedPercent = $w.utilization; fiveHourResetAt = $fReset; weeklyResetAt = $wReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
 
@@ -136,7 +195,7 @@ function Save-TokenMonitorSettings {
 function Read-TokenMonitorSettings {
     param([string]$Path = (Get-TokenMonitorSettingsPath))
 
-    $defaultGeminiCommand = '$Signatures = ''using System; using System.Runtime.InteropServices; namespace Win32 { public class CredManager { [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CredRead(string target, uint type, int reserved, out IntPtr credentialPtr); [DllImport("advapi32.dll", EntryPoint = "CredFree", SetLastError = true)] private static extern void CredFree(IntPtr credentialPtr); [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct CREDENTIAL { public uint Flags; public uint Type; public IntPtr TargetName; public IntPtr Comment; public long LastWritten; public uint CredentialBlobSize; public IntPtr CredentialBlob; public uint Persist; public uint AttributeCount; public IntPtr Attributes; public IntPtr TargetAlias; public IntPtr UserName; } public class CredentialResult { public string TargetName; public string UserName; public byte[] CredentialBlob; } public static CredentialResult ReadCredential(string target) { IntPtr ptr = IntPtr.Zero; if (CredRead(target, 1, 0, out ptr)) { try { CREDENTIAL cred = (CREDENTIAL)Marshal.PtrToStructure(ptr, typeof(CREDENTIAL)); CredentialResult res = new CredentialResult(); res.TargetName = Marshal.PtrToStringUni(cred.TargetName); res.UserName = Marshal.PtrToStringUni(cred.UserName); if (cred.CredentialBlobSize > 0) { res.CredentialBlob = new byte[cred.CredentialBlobSize]; Marshal.Copy(cred.CredentialBlob, res.CredentialBlob, 0, (int)cred.CredentialBlobSize); } return res; } finally { CredFree(ptr); } } return null; } } }''; if (-not ("Win32.CredManager" -as [type])) { Add-Type -TypeDefinition $Signatures }; $res = [Win32.CredManager]::ReadCredential("gemini:antigravity"); if ($null -eq $res) { [PSCustomObject]@{ Error = "No gemini:antigravity credential" } | ConvertTo-Json -Compress; exit }; try { $auth = ConvertFrom-Json ([System.Text.Encoding]::UTF8.GetString($res.CredentialBlob)); $accessToken = $auth.token.access_token; $refreshToken = $auth.token.refresh_token; $expiryStr = $auth.token.expiry; $needRefresh = $false; if ($expiryStr) { try { $expiry = [DateTime]::Parse($expiryStr); if ($expiry.AddMinutes(-5) -lt [DateTime]::Now) { $needRefresh = $true } } catch { $needRefresh = $true } } else { $needRefresh = $true }; $headers = @{ "User-Agent" = "Mozilla/5.0"; "Content-Type" = "application/json"; Authorization = "Bearer $accessToken"; "x-same-domain" = "1"; Origin = "chrome-extension://hup-antigravity" }; $body = @{ project = "norse-gauge-7zsgc" } | ConvertTo-Json -Compress; $response = $null; if (-not $needRefresh) { try { $response = Invoke-RestMethod -Uri "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota" -Method Post -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop } catch { $needRefresh = $true } }; if ($needRefresh) { $clientId = "1071006060591-" + "tmhssin2h21lcre235vtolojh" + "4g403ep.apps." + "googleusercontent.com"; $clientSecret = "GOCSPX-" + "K58FWR486LdL" + "J1mLB8sXC4" + "z6qDAf"; $refreshBody = @{ client_id = $clientId; client_secret = $clientSecret; refresh_token = $refreshToken; grant_type = "refresh_token" }; $refreshResp = Invoke-RestMethod -Uri "https://oauth2.googleapis.com/token" -Method Post -Body $refreshBody -ErrorAction Stop; $accessToken = $refreshResp.access_token; $headers["Authorization"] = "Bearer $accessToken"; $response = Invoke-RestMethod -Uri "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota" -Method Post -Headers $headers -Body $body -ContentType "application/json" -ErrorAction Stop }; if ($response -and $response.buckets) { $minFraction = 1.0; $resetTime = $null; foreach ($bucket in $response.buckets) { if ($null -ne $bucket.remainingFraction -and $bucket.remainingFraction -lt $minFraction) { $minFraction = $bucket.remainingFraction }; if (-not $resetTime -and $bucket.resetTime) { $resetTime = $bucket.resetTime } }; $remainingPercent = [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round($minFraction * 100.0, 1))); [PSCustomObject]@{ fiveHourRemainingPercent = $remainingPercent; weeklyRemainingPercent = 100.0; fiveHourResetAt = $resetTime } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultGeminiCommand = Get-DefaultAntigravityCommand
     $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
     $defaultClaudeCommand = '$credsPath = "$env:USERPROFILE\.claude\.credentials.json"; if (-not (Test-Path -LiteralPath $credsPath)) { [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress; exit }; try { $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json; $token = $creds.claudeAiOauth.accessToken; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "claude-code/2.1.186"; "anthropic-beta" = "oauth-2025-04-20" }; $resp = Invoke-RestMethod -Uri "https://api.anthropic.com/api/oauth/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $f = $resp.five_hour; $w = $resp.seven_day; $fReset = $f.resets_at; if (-not $fReset) { $fReset = $f.reset_at }; if (-not $fReset) { $fReset = $f.resetsAt }; $wReset = $w.resets_at; if (-not $wReset) { $wReset = $w.reset_at }; if (-not $wReset) { $wReset = $w.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $f.utilization; weeklyUsedPercent = $w.utilization; fiveHourResetAt = $fReset; weeklyResetAt = $wReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
 
@@ -199,7 +258,7 @@ function Read-TokenMonitorSettings {
             $migrated = $true
         }
         else {
-            if ($provider.Id -eq 'antigravity' -and ([string]::IsNullOrWhiteSpace($provider.Command) -or ($provider.Command).Contains('if (-not $sapisid -or -not $psid1)') -or ($provider.Command).Contains('$at = $d.thykhd;') -or ($provider.Command).Contains('jSf9Qc'))) {
+            if ($provider.Id -eq 'antigravity' -and ([string]::IsNullOrWhiteSpace($provider.Command) -or ($provider.Command).IndexOf('gemini.google.com/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -or ($provider.Command).IndexOf('v1internal:retrieveUserQuota', [StringComparison]::OrdinalIgnoreCase) -ge 0 -or ($provider.Command).IndexOf('RetrieveUserQuotaSummary', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
                 $provider.Command = $defaultGeminiCommand
                 $migrated = $true
             }
@@ -1454,4 +1513,3 @@ Export-ModuleMember -Function `
     Format-Percent, `
     Format-ResetHours, `
     Format-TokenUsageTooltip
-

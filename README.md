@@ -9,14 +9,14 @@ Windows 系统托盘中的本地 AI 编程工具 Token 使用量监视器。
   以 Windows 系统托盘图标的形式运行。
 - Shows an always-visible status strip docked above the Windows taskbar.
   在 Windows 任务栏上方显示一个常显的状态条（Status Strip）。
-- Shows a dashboard for Antigravity/Gemini, Codex/ChatGPT, and Claude Code.
-  为 Antigravity/Gemini、Codex/ChatGPT 和 Claude Code 提供专用的控制面板（Dashboard）。
-- Calculates rolling 5-hour and 7-day usage from local JSON/JSONL logs (for providers without a query command configured, e.g. Gemini/Antigravity).
-  从本地的 JSON/JSONL 日志中计算 5 小时和 7 天滚动窗口的使用量（适用于未配置 API 查询命令的 Provider，例如无凭据时的 Gemini/Antigravity）。
+- Shows a dashboard for Antigravity, Codex/ChatGPT, and Claude Code.
+  为 Antigravity、Codex/ChatGPT 和 Claude Code 提供专用的控制面板（Dashboard）。
+- Calculates rolling 5-hour and 7-day usage from local JSON/JSONL logs (for providers without a query command configured, e.g. Antigravity).
+  从本地的 JSON/JSONL 日志中计算 5 小时和 7 天滚动窗口的使用量（适用于未配置 API 查询命令的 Provider，例如 Antigravity）。
 - Converts usage to remaining percentages using quotas that you configure.
   根据您配置的额度（Quota），自动将使用量转换为剩余百分比。
-- For providers with a query command configured (such as Codex/ChatGPT, Claude Code, and Gemini/Antigravity), queries the official endpoints directly for real-time live usage percentages, bypassing local log scanning.
-  对于配置了查询命令（Command）的 Provider（例如已配置凭据的 Codex/ChatGPT、Claude Code 和 Gemini/Antigravity），直接向官方接口查询实时的额度剩余百分比，并跳过本地日志文件扫描。
+- For providers with a query command configured (such as Antigravity, Codex/ChatGPT, and Claude Code), queries the relevant live usage endpoint directly, bypassing local log scanning.
+  对于配置了查询命令（Command）的 Provider（例如 Antigravity、Codex/ChatGPT 和 Claude Code），直接查询对应的实时额度接口，并跳过本地日志文件扫描。
 - Stores settings in `%APPDATA%\TokenMonitor\settings.json`.
   设置存储在 `%APPDATA%\TokenMonitor\settings.json`。
 
@@ -94,7 +94,7 @@ Default scan roots:
 默认本地日志扫描根目录：
 
 ```text
-Antigravity / Gemini:
+Antigravity:
 %APPDATA%\Google\Antigravity
 %LOCALAPPDATA%\Google\Antigravity
 %APPDATA%\Antigravity
@@ -117,32 +117,11 @@ For providers using query commands, you must configure local authorization files
   **Codex / ChatGPT**：当您在终端中使用 Codex CLI 登录后，会自动在 `~/.codex/auth.json` 生成该文件。
 - **Claude Code**: Automatically created at `~/.claude/.credentials.json` when you log in through the Claude CLI.
   **Claude Code**：当您在终端中使用 Claude CLI 登录后，会自动在 `~/.claude/.credentials.json` 生成该凭据。
-- **Antigravity / Gemini**: You can configure this manually or use our automated extraction script:
-  **Antigravity / Gemini**：您可以手动配置，也可以使用我们的自动提取脚本：
+- **Antigravity**: No Gemini web cookies are required. Start the Antigravity app and TokenMonitor queries Antigravity's local language-server RPC (`RetrieveUserQuotaSummary`) using the CSRF token and localhost port written to `%APPDATA%\Antigravity\logs\main.log`.
+  **Antigravity**：不需要 Gemini 网页 Cookie。启动 Antigravity 应用后，TokenMonitor 会读取 `%APPDATA%\Antigravity\logs\main.log` 中的本地端口和 CSRF token，并调用 Antigravity 本地 language-server RPC（`RetrieveUserQuotaSummary`）。
 
-  **Method A: Automated Extraction (Recommended) / 方法 A：自动提取（推荐）**
-  1. Temporarily close Microsoft Edge (or Chrome) completely, ensuring no background processes are running.
-     暂时完全关闭 Microsoft Edge（或 Chrome）浏览器，并确保没有后台进程驻留。
-  2. Run the following command in the repository folder:
-     在仓库根目录下运行以下命令：
-     ```powershell
-     powershell -ExecutionPolicy Bypass -File .\tests\dump-cookies-auto.ps1
-     ```
-     This script will automatically copy, decrypt, and save your active Gemini session cookies to `%APPDATA%\TokenMonitor\gemini_auth.json`.
-     该脚本会自动复制并解密您浏览器中处于登录状态的 Gemini 会话 Cookie，并将其保存到 `%APPDATA%\TokenMonitor\gemini_auth.json`。
-
-  **Method B: Manual Setup / 方法 B：手动设置**
-  Create a file at `%APPDATA%\TokenMonitor\gemini_auth.json` with the following contents:
-  在 `%APPDATA%\TokenMonitor\gemini_auth.json` 创建一个文件，内容格式如下：
-  ```json
-  {
-    "Secure_1PSID": "your___Secure-1PSID_cookie",
-    "Secure_1PSIDTS": "your___Secure-1PSIDTS_cookie"
-  }
-  ```
-  *(To get these values: open Microsoft Edge or Chrome, log into `https://gemini.google.com`, press `F12` to open Developer Tools, go to **Application (应用) -> Cookies**, select `https://gemini.google.com`, and copy the values for the `__Secure-1PSID` and `__Secure-1PSIDTS` cookies. Note: `SAPISID` is now optional).*
-  
-  *(获取这些 Cookie 值的方法：打开 Edge 或 Chrome 浏览器，登录并访问 `https://gemini.google.com`；在页面上按 `F12` 打开开发者工具，切换到 **Application（应用，部分浏览器为“存储”）-> Cookies**，在左侧选择 `https://gemini.google.com` 域名，即可在右侧表格中找到 `__Secure-1PSID` 和 `__Secure-1PSIDTS` 的 Value 值，并复制填入 JSON 中。注意：`SAPISID` 现在已是可选参数，不再强制要求配置。)*
+  This intentionally does not call `https://gemini.google.com/usage`, because Gemini web quota and Antigravity quota are separate.
+  这里有意不调用 `https://gemini.google.com/usage`，因为 Gemini 网页额度和 Antigravity 额度是两套不同的限制。
 
 ## CLI checks / 命令行检查
 
@@ -162,8 +141,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\src\TokenMonitor.ps1 -
 
 ## Limits / 限额说明
 
-Claude Code has documented local session transcripts under `~/.claude/projects/`; Claude's `/usage` screen also uses local history for approximate plan usage. For Gemini / Antigravity, when no query command is configured, this tool treats local JSON/JSONL token logs as the source of truth.
-Claude Code 在 `~/.claude/projects/` 目录下存有本地会话记录；Claude 的命令行 `/usage` 指令也会使用这些本地历史记录来预估套餐使用情况。对于 Gemini / Antigravity，如果未配置查询命令，该工具将以本地扫描到的 JSON/JSONL Token 日志作为数据源。
+Claude Code has documented local session transcripts under `~/.claude/projects/`; Claude's `/usage` screen also uses local history for approximate plan usage. For Antigravity, when no query command is configured, this tool treats local JSON/JSONL token logs as the source of truth.
+Claude Code 在 `~/.claude/projects/` 目录下存有本地会话记录；Claude 的命令行 `/usage` 指令也会使用这些本地历史记录来预估套餐使用情况。对于 Antigravity，如果未配置查询命令，该工具将以本地扫描到的 JSON/JSONL Token 日志作为数据源。
 
 For Codex / ChatGPT, the tool fetches real-time rolling usage directly from the cloud analytics page (`https://chatgpt.com/codex/cloud/settings/analytics#usage`) using an automated background query command that retrieves remaining limit percentages using the session token in your local `~/.codex/auth.json` config, bypassing local logs.
 对于 Codex / ChatGPT，该工具通过自动化的后台查询命令，利用您本地 `~/.codex/auth.json` 配置中的会话 Token，直接从云端分析页面 (`https://chatgpt.com/codex/cloud/settings/analytics#usage`) 获取实时的滚动额度剩余百分比，从而跳过本地日志解析。
@@ -171,5 +150,5 @@ For Codex / ChatGPT, the tool fetches real-time rolling usage directly from the 
 For Claude Code, the tool fetches real-time rolling usage statistics (corresponding to the web-based usage settings page `https://claude.ai/new#settings/usage`) using the OAuth access token stored in your local `~/.claude/.credentials.json` to query the `https://api.anthropic.com/api/oauth/usage` endpoint, bypassing local logs.
 对于 Claude Code，该工具利用您本地 `~/.claude/.credentials.json` 中的 OAuth 访问 Token，向 `https://api.anthropic.com/api/oauth/usage` 发起请求，获取实时的滚动使用统计数据（与网页版 `https://claude.ai/new#settings/usage` 的配额限制一致），跳过本地日志文件扫描。
 
-For Antigravity / Gemini, the tool fetches real-time rolling compute limits directly from the Gemini web usage page (`https://gemini.google.com/usage`) using an automated background query command that retrieves remaining limit percentages using the session credentials in your local `%APPDATA%\TokenMonitor\gemini_auth.json` config, bypassing local logs.
-对于 Antigravity / Gemini，该工具通过自动化的后台查询命令，利用您本地 `%APPDATA%\TokenMonitor\gemini_auth.json` 配置中的 Cookie 会话凭据，直接向网页端 `https://gemini.google.com/usage` 对应的 API 发起请求获取实时的滚动计算量限额剩余百分比，跳过任何本地日志扫描与计算。
+For Antigravity, the tool fetches real-time rolling compute limits from the running Antigravity local language server and currently reports the Gemini Models quota group only.
+对于 Antigravity，该工具会从正在运行的 Antigravity 本地 language server 获取实时滚动额度，目前只统计其中的 Gemini Models 配额组。
