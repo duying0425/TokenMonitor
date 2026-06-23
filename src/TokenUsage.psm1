@@ -1066,26 +1066,30 @@ function Format-ProviderWindowPercent {
 function Format-TokenUsageTooltip {
     param($Snapshot)
 
-    $parts = New-Object System.Collections.Generic.List[string]
+    $fiveHourParts = New-Object System.Collections.Generic.List[string]
+    $weeklyParts = New-Object System.Collections.Generic.List[string]
     foreach ($provider in @($Snapshot.Providers)) {
         if (-not $provider.Enabled) {
             continue
         }
 
         $shortName = switch ($provider.Id) {
-            'antigravity' { 'Gemini' }
-            'codex' { 'Codex' }
-            'claude' { 'Claude' }
+            'antigravity' { 'G' }
+            'codex' { 'C' }
+            'claude' { 'Cl' }
             default { $provider.Name }
         }
 
-        $parts.Add(('{0} 5h:{1}' -f $shortName, (Format-ProviderWindowPercent -Provider $provider -Window '5h')))
-        $parts.Add(('{0} 7d:{1}' -f $shortName, (Format-ProviderWindowPercent -Provider $provider -Window '7d')))
+        $fiveHourParts.Add(('{0}:{1}' -f $shortName, (Format-ProviderWindowPercent -Provider $provider -Window '5h')))
+        $weeklyParts.Add(('{0}:{1}' -f $shortName, (Format-ProviderWindowPercent -Provider $provider -Window '7d')))
     }
 
     $text = 'TokenMonitor'
-    if ($parts.Count -gt 0) {
-        $text = ($parts -join "`n")
+    if ($fiveHourParts.Count -gt 0 -or $weeklyParts.Count -gt 0) {
+        $text = ('5h {0}' -f ($fiveHourParts -join ' '))
+        if ($weeklyParts.Count -gt 0) {
+            $text += ("`n7d {0}" -f ($weeklyParts -join ' '))
+        }
     }
 
     if ($text.Length -gt 63) {

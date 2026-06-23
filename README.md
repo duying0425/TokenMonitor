@@ -49,7 +49,7 @@ Install `ps2exe`, then build the Windows tray executable from the repository roo
 
 ```powershell
 Install-Module ps2exe -Scope CurrentUser
-ps2exe .\src\TokenMonitor.ps1 .\TokenMonitor.exe -STA -noConsole -title TokenMonitor -product TokenMonitor -version 1.2.0 -embedFiles @{'.\src\TokenUsage.psm1'='.\src\TokenUsage.psm1'}
+ps2exe .\src\TokenMonitor.ps1 .\TokenMonitor.exe -STA -noConsole -title TokenMonitor -product TokenMonitor -version 1.2.1 -embedFiles @{'.\src\TokenUsage.psm1'='.\src\TokenUsage.psm1'}
 ```
 
 The generated `TokenMonitor.exe` embeds `src\TokenUsage.psm1` and extracts it beside the executable on first run.
