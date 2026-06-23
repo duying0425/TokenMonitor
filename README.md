@@ -70,7 +70,20 @@ Codex / ChatGPT:
 Claude Code:
 %USERPROFILE%\.claude\projects
 %USERPROFILE%\.claude\sessions
-```
+### Credentials setup
+
+For providers using query commands, you must configure local authorization files:
+
+- **Codex / ChatGPT**: Automatically created at `~/.codex/auth.json` when you log in through the Codex CLI.
+- **Claude Code**: Automatically created at `~/.claude/.credentials.json` when you log in through the Claude CLI.
+- **Antigravity / Gemini**: Create a file at `%APPDATA%\TokenMonitor\gemini_auth.json` with the following contents:
+  ```json
+  {
+    "Secure_1PSID": "your___Secure-1PSID_cookie",
+    "SAPISID": "your_SAPISID_cookie"
+  }
+  ```
+  *(To get these values: open Microsoft Edge or Chrome, log into `https://gemini.google.com`, press `F12` to open Developer Tools, go to **Application (应用) -> Cookies**, select `https://gemini.google.com`, and copy the values for the `__Secure-1PSID` and `SAPISID` cookies).*
 
 ## CLI checks
 
@@ -88,9 +101,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\src\TokenMonitor.ps1 -
 
 ## Limits
 
-Claude Code has documented local session transcripts under `~/.claude/projects/`; Claude's `/usage` screen also uses local history for approximate plan usage. Antigravity account-wide quota details may not be available from stable public local APIs, so this tool treats local JSON/JSONL token logs as the source of truth.
+Claude Code has documented local session transcripts under `~/.claude/projects/`; Claude's `/usage` screen also uses local history for approximate plan usage. For Gemini / Antigravity, when no query command is configured, this tool treats local JSON/JSONL token logs as the source of truth.
 
 For Codex / ChatGPT, the tool fetches real-time rolling usage directly from the cloud analytics page (`https://chatgpt.com/codex/cloud/settings/analytics#usage`) using an automated background query command that retrieves remaining limit percentages using the session token in your local `~/.codex/auth.json` config, bypassing local logs.
 
 For Claude Code, the tool fetches real-time rolling usage statistics (corresponding to the web-based usage settings page `https://claude.ai/new#settings/usage`) using the OAuth access token stored in your local `~/.claude/.credentials.json` to query the `https://api.anthropic.com/api/oauth/usage` endpoint, bypassing local logs.
+
+For Antigravity / Gemini, the tool fetches real-time rolling compute limits directly from the Gemini web usage page (`https://gemini.google.com/usage`) using an automated background query command that retrieves remaining limit percentages using the session credentials in your local `%APPDATA%\TokenMonitor\gemini_auth.json` config, bypassing local logs.
 
