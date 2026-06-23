@@ -148,7 +148,7 @@ function Get-StatusStripText {
         }
 
         $name = switch ($provider.Id) {
-            'antigravity' { 'Gemini' }
+            'antigravity' { 'Antigravity' }
             'codex' { 'Codex' }
             'claude' { 'Claude' }
             default { $provider.Name }
