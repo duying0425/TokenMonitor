@@ -1911,13 +1911,12 @@ function Format-TooltipProviderName {
         default { $Provider.Name }
     }
 
-    $mode = 'O'
     if (((Get-Member -InputObject $Provider -Name IsEstimatedFromCache -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $Provider.IsEstimatedFromCache) -or
         (-not (Test-TokenProviderStatusOk -Status $Provider.Status))) {
-        $mode = 'E'
+        return ('{0}(E)' -f $shortName)
     }
 
-    return ('{0}({1})' -f $shortName, $mode)
+    return $shortName
 }
 
 function Format-TokenUsageTooltip {
