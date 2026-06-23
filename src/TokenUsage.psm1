@@ -897,20 +897,20 @@ function Get-TokenUsageSnapshot {
 
                     if ($null -ne $commandFiveRemaining) {
                         $fiveHourRemainingPercent = [Math]::Max(0, [Math]::Min(100, [Math]::Round([double]$commandFiveRemaining, 1)))
-                        $fiveHourUsedDisplay = ('{0:N1}% used' -f (100.0 - $fiveHourRemainingPercent))
+                        $fiveHourUsedDisplay = ('{0:N0}% used' -f (100.0 - $fiveHourRemainingPercent))
                     }
                     elseif ($null -ne $commandFiveUsedPercent) {
                         $fiveHourRemainingPercent = [Math]::Max(0, [Math]::Round(100.0 - [double]$commandFiveUsedPercent, 1))
-                        $fiveHourUsedDisplay = ('{0:N1}% used' -f [double]$commandFiveUsedPercent)
+                        $fiveHourUsedDisplay = ('{0:N0}% used' -f [double]$commandFiveUsedPercent)
                     }
 
                     if ($null -ne $commandWeekRemaining) {
                         $weeklyRemainingPercent = [Math]::Max(0, [Math]::Min(100, [Math]::Round([double]$commandWeekRemaining, 1)))
-                        $weeklyUsedDisplay = ('{0:N1}% used' -f (100.0 - $weeklyRemainingPercent))
+                        $weeklyUsedDisplay = ('{0:N0}% used' -f (100.0 - $weeklyRemainingPercent))
                     }
                     elseif ($null -ne $commandWeekUsedPercent) {
                         $weeklyRemainingPercent = [Math]::Max(0, [Math]::Round(100.0 - [double]$commandWeekUsedPercent, 1))
-                        $weeklyUsedDisplay = ('{0:N1}% used' -f [double]$commandWeekUsedPercent)
+                        $weeklyUsedDisplay = ('{0:N0}% used' -f [double]$commandWeekUsedPercent)
                     }
                 }
             }
@@ -975,7 +975,7 @@ function Get-TokenUsageSnapshot {
                 -ResetAtUtc $latestFiveHourLimitEvent.FiveHourResetAtUtc `
                 -NowUtc $nowUtc
             if ($null -ne $fiveHourRemainingPercent) {
-                $fiveHourUsedDisplay = ('{0:N1}% used' -f (100.0 - [double]$fiveHourRemainingPercent))
+                $fiveHourUsedDisplay = ('{0:N0}% used' -f (100.0 - [double]$fiveHourRemainingPercent))
             }
         }
         if ($weekLimit -le 0 -and $null -ne $latestWeeklyLimitEvent -and $null -ne $latestWeeklyLimitEvent.WeeklyUsedPercent) {
@@ -984,7 +984,7 @@ function Get-TokenUsageSnapshot {
                 -ResetAtUtc $latestWeeklyLimitEvent.WeeklyResetAtUtc `
                 -NowUtc $nowUtc
             if ($null -ne $weeklyRemainingPercent) {
-                $weeklyUsedDisplay = ('{0:N1}% used' -f (100.0 - [double]$weeklyRemainingPercent))
+                $weeklyUsedDisplay = ('{0:N0}% used' -f (100.0 - [double]$weeklyRemainingPercent))
             }
         }
 
@@ -1045,7 +1045,7 @@ function Format-Percent {
     if ($null -eq $Value) {
         return 'n/a'
     }
-    return ('{0:N1}%' -f [double]$Value)
+    return ('{0:N0}%' -f [double]$Value)
 }
 
 function Format-ProviderWindowPercent {
