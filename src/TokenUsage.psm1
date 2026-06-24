@@ -1584,6 +1584,7 @@ function Get-TokenUsageSnapshot {
                     $commandStatus = $commandData.Error
                 }
                 else {
+                    $lastVisibleLocal = $nowUtc.ToLocalTime()
                     $commandFiveUsed = ConvertTo-TokenNumber (Get-PropertyByNames -Object $commandData -Names @('fiveHourUsed', 'five_hour_used', 'tokens5h', 'used5h'))
                     $commandWeekUsed = ConvertTo-TokenNumber (Get-PropertyByNames -Object $commandData -Names @('weeklyUsed', 'weekUsed', 'sevenDayUsed', 'seven_day_used', 'tokens7d', 'used7d'))
                     if ($commandFiveUsed -gt 0) {
@@ -1643,7 +1644,6 @@ function Get-TokenUsageSnapshot {
                             -WeeklyRemainingPercent $weeklyRemainingPercent `
                             -FiveHourResetAt $fiveHourResetAtUtc `
                             -WeeklyResetAt $weeklyResetAtUtc
-                        $lastVisibleLocal = $nowUtc.ToLocalTime()
                     }
                 }
             }

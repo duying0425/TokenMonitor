@@ -470,7 +470,7 @@ function Show-Dashboard {
         @('WeeklyLimit', '7d quota'),
         @('WeeklyLeft', '7d left'),
         @('WeeklyReset', '7d reset'),
-        @('LastEvent', 'Last visible'),
+        @('LastEvent', 'Last update'),
         @('Files', 'Files'),
         @('Events', 'Events'),
         @('Status', 'Status')
