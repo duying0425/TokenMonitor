@@ -1,4 +1,4 @@
-﻿param(
+param(
     [switch]$Dump,
     [switch]$SelfTest
 )
@@ -352,22 +352,11 @@ function Update-DashboardGrid {
 
     $script:Grid.Rows.Clear()
     foreach ($provider in @($script:Snapshot.Providers)) {
-        $fiveHourUsed = Format-TokenCount $provider.FiveHourUsed
-        $weeklyUsed = Format-TokenCount $provider.WeeklyUsed
-        if (Get-Member -InputObject $provider -Name FiveHourUsedDisplay -MemberType NoteProperty -ErrorAction SilentlyContinue) {
-            $fiveHourUsed = $provider.FiveHourUsedDisplay
-        }
-        if (Get-Member -InputObject $provider -Name WeeklyUsedDisplay -MemberType NoteProperty -ErrorAction SilentlyContinue) {
-            $weeklyUsed = $provider.WeeklyUsedDisplay
-        }
-
         [void]$script:Grid.Rows.Add(
             $provider.Name,
             (Format-ProviderHealthCell -Provider $provider),
-            $fiveHourUsed,
             (Format-Percent $provider.FiveHourRemainingPercent),
             (Format-ResetHours $provider.FiveHourResetHours),
-            $weeklyUsed,
             (Format-Percent $provider.WeeklyRemainingPercent),
             (Format-ResetHours $provider.WeeklyResetHours),
             (Format-DateCell $provider.LastEventLocal),
@@ -485,11 +474,9 @@ function Show-Dashboard {
     foreach ($column in @(
         @('Provider', 'Provider'),
         @('Health', 'Health'),
-        @('FiveHourUsed', '5h used'),
-        @('FiveHourLeft', '5h left'),
+        @('FiveHour', '5h quota'),
         @('FiveHourReset', '5h reset'),
-        @('WeeklyUsed', '7d used'),
-        @('WeeklyLeft', '7d left'),
+        @('Weekly', '7d quota'),
         @('WeeklyReset', '7d reset'),
         @('LastEvent', 'Last update'),
         @('Status', 'Status')
