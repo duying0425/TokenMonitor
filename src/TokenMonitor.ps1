@@ -135,6 +135,31 @@ catch {
 Enable-HighDpiSupport
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+$script:UiScale = 1.0
+try {
+    $screenGraphics = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $script:UiScale = [Math]::Max(1.0, [double]$screenGraphics.DpiX / 96.0)
+    $screenGraphics.Dispose()
+}
+catch {
+    $script:UiScale = 1.0
+}
+
+function Scale-UiValue {
+    param([double]$Value)
+
+    return [int][Math]::Round($Value * $script:UiScale)
+}
+
+function New-UiSize {
+    param(
+        [double]$Width,
+        [double]$Height
+    )
+
+    return (New-Object System.Drawing.Size((Scale-UiValue $Width), (Scale-UiValue $Height)))
+}
+
 $script:Snapshot = $null
 $script:DashboardForm = $null
 $script:SettingsForm = $null
@@ -340,16 +365,12 @@ function Update-DashboardGrid {
             $provider.Name,
             (Format-ProviderHealthCell -Provider $provider),
             $fiveHourUsed,
-            (Format-TokenCount $provider.FiveHourLimit),
             (Format-Percent $provider.FiveHourRemainingPercent),
             (Format-ResetHours $provider.FiveHourResetHours),
             $weeklyUsed,
-            (Format-TokenCount $provider.WeeklyLimit),
             (Format-Percent $provider.WeeklyRemainingPercent),
             (Format-ResetHours $provider.WeeklyResetHours),
             (Format-DateCell $provider.LastEventLocal),
-            [string]$provider.Files,
-            [string]$provider.Events,
             $provider.Status
         )
 
@@ -406,45 +427,45 @@ function Show-Dashboard {
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'TokenMonitor'
     $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
-    $form.Size = New-Object System.Drawing.Size(980, 420)
+    $form.Size = New-UiSize 900 420
     $form.StartPosition = 'CenterScreen'
-    $form.MinimumSize = New-Object System.Drawing.Size(820, 320)
+    $form.MinimumSize = New-UiSize 760 320
 
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Dock = 'Top'
-    $panel.Height = 44
+    $panel.Height = Scale-UiValue 44
 
     $refreshButton = New-Object System.Windows.Forms.Button
     $refreshButton.Text = 'Refresh'
-    $refreshButton.Width = 90
-    $refreshButton.Height = 28
-    $refreshButton.Left = 12
-    $refreshButton.Top = 8
+    $refreshButton.Width = Scale-UiValue 90
+    $refreshButton.Height = Scale-UiValue 28
+    $refreshButton.Left = Scale-UiValue 12
+    $refreshButton.Top = Scale-UiValue 8
     $refreshButton.Add_Click({ Refresh-Usage })
     $panel.Controls.Add($refreshButton)
 
     $settingsButton = New-Object System.Windows.Forms.Button
     $settingsButton.Text = 'Settings'
-    $settingsButton.Width = 90
-    $settingsButton.Height = 28
-    $settingsButton.Left = 112
-    $settingsButton.Top = 8
+    $settingsButton.Width = Scale-UiValue 90
+    $settingsButton.Height = Scale-UiValue 28
+    $settingsButton.Left = Scale-UiValue 112
+    $settingsButton.Top = Scale-UiValue 8
     $settingsButton.Add_Click({ Show-Settings })
     $panel.Controls.Add($settingsButton)
 
     $openConfigButton = New-Object System.Windows.Forms.Button
     $openConfigButton.Text = 'Open config'
-    $openConfigButton.Width = 100
-    $openConfigButton.Height = 28
-    $openConfigButton.Left = 212
-    $openConfigButton.Top = 8
+    $openConfigButton.Width = Scale-UiValue 100
+    $openConfigButton.Height = Scale-UiValue 28
+    $openConfigButton.Left = Scale-UiValue 212
+    $openConfigButton.Top = Scale-UiValue 8
     $openConfigButton.Add_Click({ Invoke-Item -LiteralPath $script:SettingsPath })
     $panel.Controls.Add($openConfigButton)
 
     $status = New-Object System.Windows.Forms.Label
     $status.AutoSize = $true
-    $status.Left = 330
-    $status.Top = 14
+    $status.Left = Scale-UiValue 330
+    $status.Top = Scale-UiValue 14
     $status.Text = 'Updated: never'
     $panel.Controls.Add($status)
 
@@ -458,21 +479,19 @@ function Show-Dashboard {
     $grid.MultiSelect = $false
     $grid.AutoSizeColumnsMode = 'Fill'
     $grid.BackgroundColor = [System.Drawing.SystemColors]::Window
+    $grid.ColumnHeadersHeight = Scale-UiValue 30
+    $grid.RowTemplate.Height = Scale-UiValue 28
 
     foreach ($column in @(
         @('Provider', 'Provider'),
         @('Health', 'Health'),
         @('FiveHourUsed', '5h used'),
-        @('FiveHourLimit', '5h quota'),
         @('FiveHourLeft', '5h left'),
         @('FiveHourReset', '5h reset'),
         @('WeeklyUsed', '7d used'),
-        @('WeeklyLimit', '7d quota'),
         @('WeeklyLeft', '7d left'),
         @('WeeklyReset', '7d reset'),
         @('LastEvent', 'Last update'),
-        @('Files', 'Files'),
-        @('Events', 'Events'),
         @('Status', 'Status')
     )) {
         $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
@@ -532,51 +551,51 @@ function Show-Settings {
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'TokenMonitor Settings'
     $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
-    $form.Size = New-Object System.Drawing.Size(1040, 420)
+    $form.Size = New-UiSize 1040 420
     $form.StartPosition = 'CenterScreen'
-    $form.MinimumSize = New-Object System.Drawing.Size(900, 320)
+    $form.MinimumSize = New-UiSize 900 320
 
     $top = New-Object System.Windows.Forms.Panel
     $top.Dock = 'Top'
-    $top.Height = 42
+    $top.Height = Scale-UiValue 42
 
     $refreshLabel = New-Object System.Windows.Forms.Label
     $refreshLabel.Text = 'Refresh seconds'
     $refreshLabel.AutoSize = $true
-    $refreshLabel.Left = 12
-    $refreshLabel.Top = 13
+    $refreshLabel.Left = Scale-UiValue 12
+    $refreshLabel.Top = Scale-UiValue 13
     $top.Controls.Add($refreshLabel)
 
     $refreshInput = New-Object System.Windows.Forms.NumericUpDown
     $refreshInput.Minimum = 10
     $refreshInput.Maximum = 3600
     $refreshInput.Value = [decimal]([Math]::Max(10, [int]$settings.RefreshSeconds))
-    $refreshInput.Left = 118
-    $refreshInput.Top = 9
-    $refreshInput.Width = 80
+    $refreshInput.Left = Scale-UiValue 118
+    $refreshInput.Top = Scale-UiValue 9
+    $refreshInput.Width = Scale-UiValue 80
     $top.Controls.Add($refreshInput)
 
     $maxFileLabel = New-Object System.Windows.Forms.Label
     $maxFileLabel.Text = 'Max file MB'
     $maxFileLabel.AutoSize = $true
-    $maxFileLabel.Left = 218
-    $maxFileLabel.Top = 13
+    $maxFileLabel.Left = Scale-UiValue 218
+    $maxFileLabel.Top = Scale-UiValue 13
     $top.Controls.Add($maxFileLabel)
 
     $maxFileInput = New-Object System.Windows.Forms.NumericUpDown
     $maxFileInput.Minimum = 1
     $maxFileInput.Maximum = 2048
     $maxFileInput.Value = [decimal]([Math]::Max(1, [int]$settings.MaxFileSizeMB))
-    $maxFileInput.Left = 298
-    $maxFileInput.Top = 9
-    $maxFileInput.Width = 70
+    $maxFileInput.Left = Scale-UiValue 298
+    $maxFileInput.Top = Scale-UiValue 9
+    $maxFileInput.Width = Scale-UiValue 70
     $top.Controls.Add($maxFileInput)
 
     $hint = New-Object System.Windows.Forms.Label
     $hint.Text = 'Use semicolon-separated roots. Quotas are token counts; 0 means unknown.'
     $hint.AutoSize = $true
-    $hint.Left = 388
-    $hint.Top = 13
+    $hint.Left = Scale-UiValue 388
+    $hint.Top = Scale-UiValue 13
     $top.Controls.Add($hint)
 
     $grid = New-Object System.Windows.Forms.DataGridView
@@ -586,6 +605,8 @@ function Show-Settings {
     $grid.RowHeadersVisible = $false
     $grid.AutoSizeColumnsMode = 'Fill'
     $grid.BackgroundColor = [System.Drawing.SystemColors]::Window
+    $grid.ColumnHeadersHeight = Scale-UiValue 30
+    $grid.RowTemplate.Height = Scale-UiValue 28
 
     $enabledCol = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
     $enabledCol.Name = 'Enabled'
@@ -627,14 +648,14 @@ function Show-Settings {
 
     $bottom = New-Object System.Windows.Forms.Panel
     $bottom.Dock = 'Bottom'
-    $bottom.Height = 48
+    $bottom.Height = Scale-UiValue 48
 
     $saveButton = New-Object System.Windows.Forms.Button
     $saveButton.Text = 'Save'
-    $saveButton.Width = 90
-    $saveButton.Height = 28
-    $saveButton.Left = 12
-    $saveButton.Top = 10
+    $saveButton.Width = Scale-UiValue 90
+    $saveButton.Height = Scale-UiValue 28
+    $saveButton.Left = Scale-UiValue 12
+    $saveButton.Top = Scale-UiValue 10
     $saveButton.Add_Click({
         $grid.EndEdit()
 
@@ -672,10 +693,10 @@ function Show-Settings {
 
     $cancelButton = New-Object System.Windows.Forms.Button
     $cancelButton.Text = 'Cancel'
-    $cancelButton.Width = 90
-    $cancelButton.Height = 28
-    $cancelButton.Left = 112
-    $cancelButton.Top = 10
+    $cancelButton.Width = Scale-UiValue 90
+    $cancelButton.Height = Scale-UiValue 28
+    $cancelButton.Left = Scale-UiValue 112
+    $cancelButton.Top = Scale-UiValue 10
     $cancelButton.Add_Click({
         $this.FindForm().Close()
     })
@@ -683,10 +704,10 @@ function Show-Settings {
 
     $openButton = New-Object System.Windows.Forms.Button
     $openButton.Text = 'Open config'
-    $openButton.Width = 100
-    $openButton.Height = 28
-    $openButton.Left = 212
-    $openButton.Top = 10
+    $openButton.Width = Scale-UiValue 100
+    $openButton.Height = Scale-UiValue 28
+    $openButton.Left = Scale-UiValue 212
+    $openButton.Top = Scale-UiValue 10
     $openButton.Add_Click({ Invoke-Item -LiteralPath $script:SettingsPath })
     $bottom.Controls.Add($openButton)
 
@@ -733,6 +754,8 @@ function Exit-TokenMonitor {
 }
 
 $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$contextMenu.ImageScalingSize = New-UiSize 16 16
+$contextMenu.Padding = New-Object System.Windows.Forms.Padding((Scale-UiValue 2))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Dashboard' -OnClick { Show-Dashboard }))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Refresh now' -OnClick { Refresh-Usage }))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Settings' -OnClick { Show-Settings }))
