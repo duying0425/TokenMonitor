@@ -681,7 +681,7 @@ function Show-Settings {
             RefreshSeconds = [int]$refreshInput.Value
             MaxFileSizeMB = [int]$maxFileInput.Value
             ShowStatusStrip = [bool]$settings.ShowStatusStrip
-            Providers = @($providers)
+            Providers = @($providers.ToArray())
         }
 
         Save-TokenMonitorSettings -Settings $newSettings -Path $script:SettingsPath
