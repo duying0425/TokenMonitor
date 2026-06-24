@@ -1220,6 +1220,18 @@ function Get-EstimatedProviderQuotaFromCache {
     $fiveRemaining = Get-CachedRemainingPercentFromLastVisible -RemainingPercent $cached.FiveHourRemainingPercent -ObservedAtUtc $observedAtUtc
     $weeklyRemaining = Get-CachedRemainingPercentFromLastVisible -RemainingPercent $cached.WeeklyRemainingPercent -ObservedAtUtc $observedAtUtc
 
+    $fiveHourResetPassed = ($null -ne $fiveResetAtUtc -and ([DateTime]$fiveResetAtUtc) -le $NowUtc)
+    $weeklyResetPassed = ($null -ne $weeklyResetAtUtc -and ([DateTime]$weeklyResetAtUtc) -le $NowUtc)
+
+    if ($fiveHourResetPassed) {
+        $fiveRemaining = 100.0
+        $fiveResetAtUtc = $NowUtc.AddHours(5)
+    }
+    if ($weeklyResetPassed) {
+        $weeklyRemaining = 100.0
+        $weeklyResetAtUtc = $NowUtc.AddHours(168)
+    }
+
     if ($null -eq $fiveRemaining -and $null -eq $weeklyRemaining) {
         return $null
     }
