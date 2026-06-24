@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 $script:TimestampFields = @(
     'timestamp',
@@ -1198,13 +1198,14 @@ function Get-CachedRemainingPercentFromLastVisible {
     return [Math]::Round($remaining, 1)
 }
 
-function Get-EstimatedAntigravityQuotaFromCache {
+function Get-EstimatedProviderQuotaFromCache {
     param(
         [Parameter(Mandatory = $true)]$Cache,
-        [Parameter(Mandatory = $true)][DateTime]$NowUtc
+        [Parameter(Mandatory = $true)][DateTime]$NowUtc,
+        [Parameter(Mandatory = $true)][string]$ProviderId
     )
 
-    $cached = Get-TokenMonitorCacheProvider -Cache $Cache -ProviderId 'antigravity'
+    $cached = Get-TokenMonitorCacheProvider -Cache $Cache -ProviderId ${ProviderId}
     if ($null -eq $cached) {
         return $null
     }
@@ -1234,10 +1235,11 @@ function Get-EstimatedAntigravityQuotaFromCache {
     }
 }
 
-function Update-AntigravityQuotaCache {
+function Update-ProviderQuotaCache {
     param(
         [Parameter(Mandatory = $true)]$Cache,
         [Parameter(Mandatory = $true)][DateTime]$NowUtc,
+        [Parameter(Mandatory = $true)][string]$ProviderId,
         $FiveHourRemainingPercent,
         $WeeklyRemainingPercent,
         $FiveHourResetAt,
@@ -1248,7 +1250,7 @@ function Update-AntigravityQuotaCache {
         return
     }
 
-    Set-TokenMonitorCacheProvider -Cache $Cache -ProviderId 'antigravity' -Value ([pscustomobject]@{
+    Set-TokenMonitorCacheProvider -Cache $Cache -ProviderId ${ProviderId} -Value ([pscustomobject]@{
         ObservedAtUtc = $NowUtc.ToString('o')
         FiveHourRemainingPercent = $FiveHourRemainingPercent
         WeeklyRemainingPercent = $WeeklyRemainingPercent
@@ -1636,23 +1638,22 @@ function Get-TokenUsageSnapshot {
                         $weeklyUsedDisplay = ('{0:N0}% used' -f [double]$commandWeekUsedPercent)
                     }
 
-                    if ($provider.Id -eq 'antigravity') {
-                        Update-AntigravityQuotaCache `
+                    Update-ProviderQuotaCache `
                             -Cache $quotaCache `
                             -NowUtc $nowUtc `
+                            -ProviderId $provider.Id `
                             -FiveHourRemainingPercent $fiveHourRemainingPercent `
                             -WeeklyRemainingPercent $weeklyRemainingPercent `
                             -FiveHourResetAt $fiveHourResetAtUtc `
                             -WeeklyResetAt $weeklyResetAtUtc
-                    }
                 }
             }
             else {
                 $commandStatus = 'Command produced no output'
             }
 
-            if ($provider.Id -eq 'antigravity' -and -not (Test-TokenProviderStatusOk -Status $commandStatus)) {
-                $cachedQuota = Get-EstimatedAntigravityQuotaFromCache -Cache $quotaCache -NowUtc $nowUtc
+            if (-not (Test-TokenProviderStatusOk -Status $commandStatus)) {
+                $cachedQuota = Get-EstimatedProviderQuotaFromCache -Cache $quotaCache -NowUtc $nowUtc -ProviderId $provider.Id
                 if ($null -ne $cachedQuota) {
                     $fiveHourRemainingPercent = $cachedQuota.FiveHourRemainingPercent
                     $weeklyRemainingPercent = $cachedQuota.WeeklyRemainingPercent
