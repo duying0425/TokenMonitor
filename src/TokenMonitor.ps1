@@ -266,9 +266,9 @@ function Get-HealthStateColor {
     param($HealthState)
 
     switch ([string]$HealthState) {
-        'empty' { return [System.Drawing.Color]::FromArgb(210, 35, 35) }
-        'low' { return [System.Drawing.Color]::FromArgb(235, 95, 25) }
-        'medium' { return [System.Drawing.Color]::FromArgb(220, 165, 30) }
+        'empty' { return [System.Drawing.Color]::FromArgb(205, 30, 55) }
+        'low' { return [System.Drawing.Color]::FromArgb(190, 120, 0) }
+        'medium' { return [System.Drawing.Color]::FromArgb(250, 210, 35) }
         'good' { return [System.Drawing.Color]::FromArgb(40, 175, 95) }
         'disabled' { return [System.Drawing.Color]::FromArgb(80, 80, 80) }
         default { return [System.Drawing.Color]::FromArgb(125, 125, 125) }
