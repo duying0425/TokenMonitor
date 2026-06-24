@@ -86,6 +86,36 @@ if ($SelfTest -or $Dump) {
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+function Enable-HighDpiSupport {
+    try {
+        $typeSuffix = Get-Random
+        $signature = @"
+[System.Runtime.InteropServices.DllImport("shcore.dll")]
+public static extern int SetProcessDpiAwareness(int value);
+
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool SetProcessDPIAware();
+"@
+        $dpi = Add-Type -MemberDefinition $signature -Name "DpiUtils_$typeSuffix" -Namespace "Win32" -PassThru
+        try {
+            # PROCESS_PER_MONITOR_DPI_AWARE keeps WinForms and ToolStrip menus crisp on scaled displays.
+            [void]$dpi::SetProcessDpiAwareness(2)
+        }
+        catch {
+            [void]$dpi::SetProcessDPIAware()
+        }
+    }
+    catch {
+        try {
+            $loadedTypes = [AppDomain]::CurrentDomain.GetAssemblies() | ForEach-Object { $_.GetTypes() } | Where-Object { $_.FullName -like 'Win32.DpiUtils_*' }
+            if ($loadedTypes) {
+                try { [void]$loadedTypes[0]::SetProcessDpiAwareness(2) } catch { [void]$loadedTypes[0]::SetProcessDPIAware() }
+            }
+        }
+        catch {}
+    }
+}
+
 $script:User32 = $null
 try {
     $typeSuffix = Get-Random
@@ -102,6 +132,7 @@ catch {
     }
 }
 
+Enable-HighDpiSupport
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $script:Snapshot = $null
@@ -349,17 +380,32 @@ function Refresh-Usage {
     }
 }
 
+function Request-UsageRefresh {
+    if ($null -ne $script:StatusLabel) {
+        $script:StatusLabel.Text = 'Refreshing...'
+    }
+
+    if ($null -ne $script:DashboardForm -and -not $script:DashboardForm.IsDisposed) {
+        [void]$script:DashboardForm.BeginInvoke([System.Action]{ Refresh-Usage })
+        return
+    }
+
+    Refresh-Usage
+}
+
 function Show-Dashboard {
     if ($null -ne $script:DashboardForm -and -not $script:DashboardForm.IsDisposed) {
         $script:DashboardForm.Show()
         $script:DashboardForm.WindowState = [System.Windows.Forms.FormWindowState]::Normal
         $script:DashboardForm.Activate()
-        Refresh-Usage
+        $script:DashboardForm.Refresh()
+        Request-UsageRefresh
         return
     }
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'TokenMonitor'
+    $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
     $form.Size = New-Object System.Drawing.Size(980, 420)
     $form.StartPosition = 'CenterScreen'
     $form.MinimumSize = New-Object System.Drawing.Size(820, 320)
@@ -447,9 +493,10 @@ function Show-Dashboard {
     $script:DashboardForm = $form
     $script:Grid = $grid
     $script:StatusLabel = $status
-    Refresh-Usage
     $form.Show()
     $form.Activate()
+    $form.Refresh()
+    Request-UsageRefresh
 }
 
 function Parse-LongCell {
@@ -484,6 +531,7 @@ function Show-Settings {
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'TokenMonitor Settings'
+    $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
     $form.Size = New-Object System.Drawing.Size(1040, 420)
     $form.StartPosition = 'CenterScreen'
     $form.MinimumSize = New-Object System.Drawing.Size(900, 320)
@@ -588,6 +636,8 @@ function Show-Settings {
     $saveButton.Left = 12
     $saveButton.Top = 10
     $saveButton.Add_Click({
+        $grid.EndEdit()
+
         $providers = New-Object System.Collections.Generic.List[object]
         foreach ($row in $grid.Rows) {
             if ($row.IsNewRow) {
@@ -609,15 +659,15 @@ function Show-Settings {
         $newSettings = [ordered]@{
             RefreshSeconds = [int]$refreshInput.Value
             MaxFileSizeMB = [int]$maxFileInput.Value
-            ShowStatusStrip = $false
+            ShowStatusStrip = [bool]$settings.ShowStatusStrip
             Providers = @($providers)
         }
 
         Save-TokenMonitorSettings -Settings $newSettings -Path $script:SettingsPath
         $script:Settings = Read-TokenMonitorSettings -Path $script:SettingsPath
         Refresh-Usage
-        $form.Hide()
-    })
+        $form.Close()
+    }.GetNewClosure())
     $bottom.Controls.Add($saveButton)
 
     $cancelButton = New-Object System.Windows.Forms.Button
@@ -626,7 +676,9 @@ function Show-Settings {
     $cancelButton.Height = 28
     $cancelButton.Left = 112
     $cancelButton.Top = 10
-    $cancelButton.Add_Click({ $form.Hide() })
+    $cancelButton.Add_Click({
+        $this.FindForm().Close()
+    })
     $bottom.Controls.Add($cancelButton)
 
     $openButton = New-Object System.Windows.Forms.Button
@@ -643,8 +695,7 @@ function Show-Settings {
     $form.Controls.Add($bottom)
     $form.Add_FormClosing({
         if ($_.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
-            $_.Cancel = $true
-            $this.Hide()
+            $script:SettingsForm = $null
         }
     })
 
