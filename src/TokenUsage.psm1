@@ -1686,6 +1686,13 @@ function Get-TokenUsageSnapshot {
                 }
             }
 
+            # If weekly quota is exhausted, force 5h to show as unavailable
+            if ($null -ne $weeklyRemainingPercent -and $weeklyRemainingPercent -le 0) {
+                $fiveHourRemainingPercent = $null
+                $fiveHourResetHours = $null
+                $fiveHourUsedDisplay = ''-''
+            }
+
             $health = Get-ProviderTokenHealth `
                 -Enabled $true `
                 -Status $commandStatus `
@@ -1788,6 +1795,13 @@ function Get-TokenUsageSnapshot {
         elseif (($fiveLimit -le 0 -and $null -eq $fiveHourRemainingPercent) -or ($weekLimit -le 0 -and $null -eq $weeklyRemainingPercent)) {
             $status = 'Set quota'
         }
+
+            # If weekly quota is exhausted, force 5h to show as unavailable
+            if ($null -ne $weeklyRemainingPercent -and $weeklyRemainingPercent -le 0) {
+                $fiveHourRemainingPercent = $null
+                $fiveHourResetHours = $null
+                $fiveHourUsedDisplay = ''-''
+            }
 
         $health = Get-ProviderTokenHealth `
             -Enabled $true `
