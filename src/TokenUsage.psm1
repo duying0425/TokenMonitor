@@ -1923,9 +1923,9 @@ function Format-TooltipProviderName {
     param($Provider)
 
     $shortName = switch ($Provider.Id) {
-        'antigravity' { 'Antigravity' }
-        'codex' { 'Codex' }
-        'claude' { 'Cluade' }
+        'antigravity' { 'Ag' }
+        'codex' { 'Cdx' }
+        'claude' { 'Claude' }
         default { $Provider.Name }
     }
 

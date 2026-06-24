@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Dump,
     [switch]$SelfTest
 )
@@ -238,8 +238,8 @@ function Get-StatusStripText {
         }
 
         $name = switch ($provider.Id) {
-            'antigravity' { 'Antigravity' }
-            'codex' { 'Codex' }
+            'antigravity' { 'Ag' }
+            'codex' { 'Cdx' }
             'claude' { 'Claude' }
             default { $provider.Name }
         }
