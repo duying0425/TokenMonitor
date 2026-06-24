@@ -19,8 +19,8 @@ Windows 系统托盘中的本地 AI 编程工具 Token 使用量监视器。
   对于配置了查询命令（Command）的 Provider（例如 Antigravity、Codex/ChatGPT 和 Claude Code），直接查询对应的实时额度接口，并跳过本地日志文件扫描。
 - Stores settings in `%APPDATA%\TokenMonitor\settings.json`.
   设置存储在 `%APPDATA%\TokenMonitor\settings.json`。
-- Stores the last visible Antigravity quota in `%APPDATA%\TokenMonitor\quota-cache.json`, so the tray can keep estimating recovery while Antigravity is closed.
-  会将最后一次可见的 Antigravity 额度存储在 `%APPDATA%\TokenMonitor\quota-cache.json`，因此 Antigravity 关闭时托盘仍可估算额度恢复。
+- Stores the last visible Antigravity quota in `%APPDATA%\TokenMonitor\quota-cache.json`, so the tray can show the cached quota and reset time while Antigravity is closed.
+  会将最后一次可见的 Antigravity 额度存储在 `%APPDATA%\TokenMonitor\quota-cache.json`，因此 Antigravity 关闭时托盘仍可显示缓存额度和恢复时间。
 
 This is a local monitor and query tool. For providers without a query command configured, remaining quota is computed as:
 本软件是一个本地监视和查询工具。对于未配置查询命令的 Provider，其剩余配额计算公式为：
@@ -158,5 +158,5 @@ For Claude Code, the tool fetches real-time rolling usage statistics (correspond
 For Antigravity, the tool fetches real-time rolling compute limits from the running Antigravity or Antigravity IDE local language server and currently reports the Gemini Models quota group only.
 对于 Antigravity，该工具会从正在运行的 Antigravity 或 Antigravity IDE 本地 language server 获取实时滚动额度，目前只统计其中的 Gemini Models 配额组。
 
-When Antigravity is not running, TokenMonitor uses the last visible Antigravity quota, that visible time, and the bucket reset times to estimate recovery until the next live query succeeds.
-当 Antigravity 未运行时，TokenMonitor 会使用最后一次可见的 Antigravity 额度、该次可见时间和桶恢复时间来估算额度恢复，直到下一次实时查询成功。
+When Antigravity is not running, TokenMonitor uses the last visible Antigravity quota and bucket reset times from cache until the next live query succeeds. Cached quota percentages are not estimated upward over time.
+当 Antigravity 未运行时，TokenMonitor 会使用缓存中的最后一次可见 Antigravity 额度和桶恢复时间，直到下一次实时查询成功。缓存额度百分比不会随时间向上估算。

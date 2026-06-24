@@ -111,7 +111,41 @@ $script:Grid = $null
 $script:StatusLabel = $null
 $script:NotifyIcon = $null
 $script:ContextMenu = $null
+$script:RefreshTimer = $null
 $script:AppContext = New-Object System.Windows.Forms.ApplicationContext
+$script:SingleInstanceMutex = $null
+$script:SingleInstanceMutexHeld = $false
+
+function Initialize-SingleInstance {
+    $createdNew = $false
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $userKey = if ($null -ne $identity -and $null -ne $identity.User) {
+        $identity.User.Value
+    } else {
+        [Environment]::UserName
+    }
+    $userKey = $userKey -replace '[^A-Za-z0-9]', '_'
+    $mutexName = "Local\TokenMonitor_$userKey"
+
+    $script:SingleInstanceMutex = New-Object System.Threading.Mutex($true, $mutexName, [ref]$createdNew)
+    $script:SingleInstanceMutexHeld = [bool]$createdNew
+    if (-not $script:SingleInstanceMutexHeld) {
+        exit 0
+    }
+}
+
+function Release-SingleInstance {
+    if ($script:SingleInstanceMutexHeld -and $null -ne $script:SingleInstanceMutex) {
+        try { $script:SingleInstanceMutex.ReleaseMutex() } catch {}
+        $script:SingleInstanceMutexHeld = $false
+    }
+    if ($null -ne $script:SingleInstanceMutex) {
+        $script:SingleInstanceMutex.Dispose()
+        $script:SingleInstanceMutex = $null
+    }
+}
+
+Initialize-SingleInstance
 
 function New-MenuItem {
     param(
@@ -619,11 +653,31 @@ function Show-Settings {
     $form.Activate()
 }
 
-function Exit-TokenMonitor {
+function Dispose-TokenMonitorResources {
+    if ($null -ne $script:RefreshTimer) {
+        try { $script:RefreshTimer.Stop() } catch {}
+        try { $script:RefreshTimer.Dispose() } catch {}
+        $script:RefreshTimer = $null
+    }
+    if ($null -ne $script:DashboardForm -and -not $script:DashboardForm.IsDisposed) {
+        try { $script:DashboardForm.Dispose() } catch {}
+    }
+    if ($null -ne $script:SettingsForm -and -not $script:SettingsForm.IsDisposed) {
+        try { $script:SettingsForm.Dispose() } catch {}
+    }
     if ($null -ne $script:NotifyIcon) {
         $script:NotifyIcon.Visible = $false
-        $script:NotifyIcon.Dispose()
+        try { $script:NotifyIcon.Dispose() } catch {}
+        $script:NotifyIcon = $null
     }
+    if ($null -ne $script:ContextMenu) {
+        try { $script:ContextMenu.Dispose() } catch {}
+        $script:ContextMenu = $null
+    }
+}
+
+function Exit-TokenMonitor {
+    Dispose-TokenMonitorResources
     $script:AppContext.ExitThread()
 }
 
@@ -651,6 +705,13 @@ $timer.Add_Tick({
     Refresh-Usage
 })
 $timer.Start()
+$script:RefreshTimer = $timer
 
 Refresh-Usage
-[System.Windows.Forms.Application]::Run($script:AppContext)
+try {
+    [System.Windows.Forms.Application]::Run($script:AppContext)
+}
+finally {
+    Dispose-TokenMonitorResources
+    Release-SingleInstance
+}

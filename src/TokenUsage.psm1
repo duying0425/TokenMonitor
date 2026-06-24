@@ -249,6 +249,16 @@ function Update-ClaudeOauthToken {
         throw "OAuth token expired and no refreshToken is available; run claude /login again"
     }
 
+    $rateLimitedUntil = [int64]0
+    if ($oauth.refreshRateLimitedUntil) {
+        [void][int64]::TryParse([string]$oauth.refreshRateLimitedUntil, [ref]$rateLimitedUntil)
+    }
+    $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    if ($rateLimitedUntil -gt $nowMs) {
+        $localUntil = [DateTimeOffset]::FromUnixTimeMilliseconds($rateLimitedUntil).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz")
+        throw "OAuth refresh is rate limited until $localUntil; stop TokenMonitor and run claude /login, or wait before retrying"
+    }
+
     $clientId = $oauth.clientId
     if (-not $clientId) {
         $clientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
@@ -260,12 +270,28 @@ function Update-ClaudeOauthToken {
         client_id = $clientId
     }
 
-    $refresh = Invoke-RestMethod `
-        -Uri "https://platform.claude.com/v1/oauth/token" `
-        -Method Post `
-        -ContentType "application/x-www-form-urlencoded" `
-        -Body $body `
-        -ErrorAction Stop
+    try {
+        $refresh = Invoke-RestMethod `
+            -Uri "https://platform.claude.com/v1/oauth/token" `
+            -Method Post `
+            -ContentType "application/x-www-form-urlencoded" `
+            -Body $body `
+            -ErrorAction Stop
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+        if ($statusCode -eq 429) {
+            $retryAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + (15 * 60 * 1000)
+            Set-ClaudeOauthProperty -Oauth $oauth -Name "refreshRateLimitedUntil" -Value $retryAt
+            Save-ClaudeCredentials -Creds $Creds
+            $localRetryAt = [DateTimeOffset]::FromUnixTimeMilliseconds($retryAt).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz")
+            throw "OAuth refresh was rate limited; retry after $localRetryAt, or run claude /login to renew local credentials"
+        }
+        throw
+    }
 
     $newAccessToken = $refresh.access_token
     if (-not $newAccessToken) {
@@ -292,6 +318,7 @@ function Update-ClaudeOauthToken {
     if ($expiresIn) {
         Set-ClaudeOauthProperty -Oauth $oauth -Name "expiresAt" -Value ([int64](([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()) + ([double]$expiresIn * 1000)))
     }
+    Set-ClaudeOauthProperty -Oauth $oauth -Name "refreshRateLimitedUntil" -Value 0
 
     Save-ClaudeCredentials -Creds $Creds
     return $oauth.accessToken
@@ -520,7 +547,8 @@ function Read-TokenMonitorSettings {
                 ([string]$provider.Command).IndexOf('https://api.anthropic.com/api/oauth/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
                 (([string]$provider.Command).IndexOf('fiveHourResetAt', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
                 ([string]$provider.Command).IndexOf('https://platform.claude.com/v1/oauth/token', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
-                ([string]$provider.Command).IndexOf('Set-ClaudeOauthProperty', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
+                ([string]$provider.Command).IndexOf('Set-ClaudeOauthProperty', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+                ([string]$provider.Command).IndexOf('refreshRateLimitedUntil', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
                 $provider.Command = $defaultClaudeCommand
                 $migrated = $true
             }
@@ -1149,12 +1177,10 @@ function Set-TokenMonitorCacheProvider {
     }
 }
 
-function Get-EstimatedRemainingPercentFromLastVisible {
+function Get-CachedRemainingPercentFromLastVisible {
     param(
         $RemainingPercent,
-        $ObservedAtUtc,
-        $ResetAtUtc,
-        [Parameter(Mandatory = $true)][DateTime]$NowUtc
+        $ObservedAtUtc
     )
 
     $remaining = ConvertTo-TokenDoubleOrNull -Value $RemainingPercent
@@ -1163,22 +1189,13 @@ function Get-EstimatedRemainingPercentFromLastVisible {
     }
 
     $observedUtc = ConvertTo-TokenDateTime -Value $ObservedAtUtc
-    $resetUtc = ConvertTo-TokenDateTime -Value $ResetAtUtc
     $remaining = [Math]::Max(0.0, [Math]::Min(100.0, [double]$remaining))
 
-    if ($null -eq $observedUtc -or $null -eq $resetUtc) {
-        return [Math]::Round($remaining, 1)
+    if ($null -eq $observedUtc) {
+        return $null
     }
 
-    if ($NowUtc -ge ([DateTime]$resetUtc)) {
-        return 100.0
-    }
-    if ($NowUtc -le ([DateTime]$observedUtc) -or ([DateTime]$resetUtc -le [DateTime]$observedUtc)) {
-        return [Math]::Round($remaining, 1)
-    }
-
-    $ratio = (($NowUtc - [DateTime]$observedUtc).TotalSeconds / (([DateTime]$resetUtc - [DateTime]$observedUtc).TotalSeconds))
-    return [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round($remaining + ((100.0 - $remaining) * $ratio), 1)))
+    return [Math]::Round($remaining, 1)
 }
 
 function Get-EstimatedAntigravityQuotaFromCache {
@@ -1199,8 +1216,8 @@ function Get-EstimatedAntigravityQuotaFromCache {
 
     $fiveResetAtUtc = ConvertTo-TokenDateTime -Value $cached.FiveHourResetAtUtc
     $weeklyResetAtUtc = ConvertTo-TokenDateTime -Value $cached.WeeklyResetAtUtc
-    $fiveRemaining = Get-EstimatedRemainingPercentFromLastVisible -RemainingPercent $cached.FiveHourRemainingPercent -ObservedAtUtc $observedAtUtc -ResetAtUtc $fiveResetAtUtc -NowUtc $NowUtc
-    $weeklyRemaining = Get-EstimatedRemainingPercentFromLastVisible -RemainingPercent $cached.WeeklyRemainingPercent -ObservedAtUtc $observedAtUtc -ResetAtUtc $weeklyResetAtUtc -NowUtc $NowUtc
+    $fiveRemaining = Get-CachedRemainingPercentFromLastVisible -RemainingPercent $cached.FiveHourRemainingPercent -ObservedAtUtc $observedAtUtc
+    $weeklyRemaining = Get-CachedRemainingPercentFromLastVisible -RemainingPercent $cached.WeeklyRemainingPercent -ObservedAtUtc $observedAtUtc
 
     if ($null -eq $fiveRemaining -and $null -eq $weeklyRemaining) {
         return $null
@@ -1651,7 +1668,7 @@ function Get-TokenUsageSnapshot {
                     }
                     $lastVisibleLocal = ([DateTime]$cachedQuota.ObservedAtUtc).ToLocalTime()
                     $isEstimatedFromCache = $true
-                    $commandStatus = ('Last visible {0}; estimated while local service is offline' -f $lastVisibleLocal.ToString('yyyy-MM-dd HH:mm'))
+                    $commandStatus = ('Last visible {0}; cached while local service is offline' -f $lastVisibleLocal.ToString('yyyy-MM-dd HH:mm'))
                 }
             }
 
