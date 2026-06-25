@@ -1545,7 +1545,6 @@ function Get-TokenUsageSnapshot {
                 -WeeklyRemainingPercent $null `
                 -FiveHourResetHours $null `
                 -WeeklyResetHours $null
-            if ($weekLimit -eq 0) { $fiveHourResetHours = 0 }
             $providers.Add([pscustomobject]@{
                 Id = $provider.Id
                 Name = $provider.Name
@@ -1701,7 +1700,6 @@ function Get-TokenUsageSnapshot {
                 -FiveHourResetHours $fiveHourResetHours `
                 -WeeklyResetHours $weeklyResetHours
 
-            if ($weekLimit -eq 0) { $fiveHourResetHours = 0 }
             $providers.Add([pscustomobject]@{
                 Id = $provider.Id
                 Name = $provider.Name
@@ -1811,7 +1809,6 @@ function Get-TokenUsageSnapshot {
             -FiveHourResetHours $fiveHourResetHours `
             -WeeklyResetHours $weeklyResetHours
 
-        if ($weekLimit -eq 0) { $fiveHourResetHours = 0 }
         $providers.Add([pscustomobject]@{
             Id = $provider.Id
             Name = $provider.Name
