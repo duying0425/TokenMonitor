@@ -1688,7 +1688,7 @@ function Get-TokenUsageSnapshot {
             # If weekly quota is exhausted, force 5h to show as unavailable
             if ($null -ne $weeklyRemainingPercent -and $weeklyRemainingPercent -le 0) {
                 $fiveHourRemainingPercent = $null
-                $fiveHourResetHours = $null
+                $fiveHourResetHours = 0
                 $fiveHourUsedDisplay = ''-''
             }
 
@@ -1797,7 +1797,7 @@ function Get-TokenUsageSnapshot {
             # If weekly quota is exhausted, force 5h to show as unavailable
             if ($null -ne $weeklyRemainingPercent -and $weeklyRemainingPercent -le 0) {
                 $fiveHourRemainingPercent = $null
-                $fiveHourResetHours = $null
+                $fiveHourResetHours = 0
                 $fiveHourUsedDisplay = ''-''
             }
 
