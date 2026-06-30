@@ -215,6 +215,7 @@ catch {
 
 function Get-DefaultClaudeCommand {
     return @'
+# TokenMonitorClaudeQuotaCommandVersion=3
 $credsPath = if ($env:CLAUDE_CONFIG_DIR) {
     Join-Path $env:CLAUDE_CONFIG_DIR ".credentials.json"
 } else {
@@ -231,6 +232,17 @@ function Save-ClaudeCredentials {
     $Creds | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $credsPath -Encoding UTF8
 }
 
+function Get-ClaudeOauthProperty {
+    param($Oauth, [string[]]$Names)
+
+    foreach ($name in $Names) {
+        if (Get-Member -InputObject $Oauth -Name $name -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+            return $Oauth.$name
+        }
+    }
+    return $null
+}
+
 function Set-ClaudeOauthProperty {
     param($Oauth, [string]$Name, $Value)
 
@@ -245,28 +257,30 @@ function Update-ClaudeOauthToken {
     param($Creds)
 
     $oauth = $Creds.claudeAiOauth
-    if (-not $oauth.refreshToken) {
+    $refreshToken = Get-ClaudeOauthProperty -Oauth $oauth -Names @("refreshToken", "refresh_token")
+    if (-not $refreshToken) {
         throw "OAuth token expired and no refreshToken is available; run claude /login again"
     }
 
     $rateLimitedUntil = [int64]0
-    if ($oauth.refreshRateLimitedUntil) {
-        [void][int64]::TryParse([string]$oauth.refreshRateLimitedUntil, [ref]$rateLimitedUntil)
+    $rateLimitedUntilValue = Get-ClaudeOauthProperty -Oauth $oauth -Names @("refreshRateLimitedUntil", "refresh_rate_limited_until")
+    if ($rateLimitedUntilValue) {
+        [void][int64]::TryParse([string]$rateLimitedUntilValue, [ref]$rateLimitedUntil)
     }
     $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     if ($rateLimitedUntil -gt $nowMs) {
         $localUntil = [DateTimeOffset]::FromUnixTimeMilliseconds($rateLimitedUntil).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz")
-        throw "OAuth refresh is rate limited until $localUntil; stop TokenMonitor and run claude /login, or wait before retrying"
+        throw "OAuth refresh is locally paused until $localUntil after a 429 response; TokenMonitor will retry automatically, or run claude /login to renew local credentials"
     }
 
-    $clientId = $oauth.clientId
+    $clientId = Get-ClaudeOauthProperty -Oauth $oauth -Names @("clientId", "client_id")
     if (-not $clientId) {
         $clientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     }
 
     $body = @{
         grant_type = "refresh_token"
-        refresh_token = $oauth.refreshToken
+        refresh_token = $refreshToken
         client_id = $clientId
     }
 
@@ -288,7 +302,7 @@ function Update-ClaudeOauthToken {
             Set-ClaudeOauthProperty -Oauth $oauth -Name "refreshRateLimitedUntil" -Value $retryAt
             Save-ClaudeCredentials -Creds $Creds
             $localRetryAt = [DateTimeOffset]::FromUnixTimeMilliseconds($retryAt).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz")
-            throw "OAuth refresh was rate limited; retry after $localRetryAt, or run claude /login to renew local credentials"
+            throw "OAuth refresh was rate limited; TokenMonitor will retry after $localRetryAt, or run claude /login to renew local credentials"
         }
         throw
     }
@@ -321,7 +335,7 @@ function Update-ClaudeOauthToken {
     Set-ClaudeOauthProperty -Oauth $oauth -Name "refreshRateLimitedUntil" -Value 0
 
     Save-ClaudeCredentials -Creds $Creds
-    return $oauth.accessToken
+    return (Get-ClaudeOauthProperty -Oauth $oauth -Names @("accessToken", "access_token"))
 }
 
 function Invoke-ClaudeUsage {
@@ -344,32 +358,56 @@ try {
         exit
     }
 
-    $token = $oauth.accessToken
+    $token = Get-ClaudeOauthProperty -Oauth $oauth -Names @("accessToken", "access_token")
     $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $expiresAt = [int64]0
-    if ($oauth.expiresAt) {
-        [void][int64]::TryParse([string]$oauth.expiresAt, [ref]$expiresAt)
+    $expiresAtValue = Get-ClaudeOauthProperty -Oauth $oauth -Names @("expiresAt", "expires_at")
+    if ($expiresAtValue) {
+        [void][int64]::TryParse([string]$expiresAtValue, [ref]$expiresAt)
     }
 
-    if (-not $token -or ($expiresAt -gt 0 -and $expiresAt -lt ($nowMs + 120000))) {
-        $token = Update-ClaudeOauthToken -Creds $creds
-    }
-
-    try {
-        $resp = Invoke-ClaudeUsage -Token $token
-    }
-    catch {
-        $statusCode = $null
-        if ($_.Exception.Response) {
-            $statusCode = [int]$_.Exception.Response.StatusCode
+    $resp = $null
+    if ($token) {
+        try {
+            $resp = Invoke-ClaudeUsage -Token $token
+            $rateLimitedUntilValue = Get-ClaudeOauthProperty -Oauth $oauth -Names @("refreshRateLimitedUntil", "refresh_rate_limited_until")
+            if ($rateLimitedUntilValue -and [string]$rateLimitedUntilValue -ne "0") {
+                Set-ClaudeOauthProperty -Oauth $oauth -Name "refreshRateLimitedUntil" -Value 0
+                Save-ClaudeCredentials -Creds $creds
+            }
         }
-        if ($statusCode -ne 401) {
-            throw
+        catch {
+            $statusCode = $null
+            if ($_.Exception.Response) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+            }
+            if ($statusCode -ne 401) {
+                throw
+            }
+        }
+    }
+
+    if (-not $resp) {
+        if (-not $token -or ($expiresAt -gt 0 -and $expiresAt -lt ($nowMs + 120000))) {
+            $token = Update-ClaudeOauthToken -Creds $creds
         }
 
-        $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json
-        $token = Update-ClaudeOauthToken -Creds $creds
-        $resp = Invoke-ClaudeUsage -Token $token
+        try {
+            $resp = Invoke-ClaudeUsage -Token $token
+        }
+        catch {
+            $statusCode = $null
+            if ($_.Exception.Response) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+            }
+            if ($statusCode -ne 401) {
+                throw
+            }
+
+            $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json
+            $token = Update-ClaudeOauthToken -Creds $creds
+            $resp = Invoke-ClaudeUsage -Token $token
+        }
     }
 
     if ($resp) {
@@ -548,7 +586,8 @@ function Read-TokenMonitorSettings {
                 (([string]$provider.Command).IndexOf('fiveHourResetAt', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
                 ([string]$provider.Command).IndexOf('https://platform.claude.com/v1/oauth/token', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
                 ([string]$provider.Command).IndexOf('Set-ClaudeOauthProperty', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
-                ([string]$provider.Command).IndexOf('refreshRateLimitedUntil', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
+                ([string]$provider.Command).IndexOf('refreshRateLimitedUntil', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+                ([string]$provider.Command).IndexOf('TokenMonitorClaudeQuotaCommandVersion=3', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
                 $provider.Command = $defaultClaudeCommand
                 $migrated = $true
             }
