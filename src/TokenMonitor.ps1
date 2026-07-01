@@ -132,6 +132,32 @@ catch {
     }
 }
 
+$script:DwmApi = $null
+try {
+    $typeSuffix = Get-Random
+    $signature = @"
+[System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+"@
+    $script:DwmApi = Add-Type -MemberDefinition $signature -Name "DwmApiUtils_$typeSuffix" -Namespace "Win32" -PassThru
+}
+catch {
+    $loadedTypes = [AppDomain]::CurrentDomain.GetAssemblies() | ForEach-Object { $_.GetTypes() } | Where-Object { $_.FullName -like 'Win32.DwmApiUtils_*' }
+    if ($loadedTypes) {
+        $script:DwmApi = $loadedTypes[0]
+    }
+}
+
+function Set-ImmersiveDarkMode {
+    param([IntPtr]$Hwnd)
+
+    if ($null -ne $script:DwmApi) {
+        $trueValue = 1
+        [void]$script:DwmApi::DwmSetWindowAttribute($Hwnd, 20, [ref]$trueValue, 4)
+        [void]$script:DwmApi::DwmSetWindowAttribute($Hwnd, 19, [ref]$trueValue, 4)
+    }
+}
+
 Enable-HighDpiSupport
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
@@ -143,6 +169,106 @@ try {
 }
 catch {
     $script:UiScale = 1.0
+}
+
+# Sleek Modern Dark Theme Color Palette
+$script:Colors = @{
+    Background       = [System.Drawing.ColorTranslator]::FromHtml('#1e1e2e')
+    PanelBackground  = [System.Drawing.ColorTranslator]::FromHtml('#181825')
+    HeaderBackground = [System.Drawing.ColorTranslator]::FromHtml('#11111b')
+    Text             = [System.Drawing.ColorTranslator]::FromHtml('#cdd6f4')
+    TextDim          = [System.Drawing.ColorTranslator]::FromHtml('#a6adc8')
+    Accent           = [System.Drawing.ColorTranslator]::FromHtml('#3572F6') # Vibrant Blue
+    AccentHover      = [System.Drawing.ColorTranslator]::FromHtml('#4C8BF5')
+    Border           = [System.Drawing.ColorTranslator]::FromHtml('#313244')
+    GridLine         = [System.Drawing.ColorTranslator]::FromHtml('#313244')
+    RowHover         = [System.Drawing.ColorTranslator]::FromHtml('#313244')
+}
+
+# Resolve and Load Icon
+$script:AppIcon = $null
+try {
+    $currentExePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    if ($currentExePath -like '*TokenMonitor.exe') {
+        $script:AppIcon = [System.Drawing.Icon]::ExtractAssociatedIcon($currentExePath)
+    } else {
+        $devIco = Join-Path $scriptRoot 'token-monitor.ico'
+        if (-not (Test-Path -LiteralPath $devIco)) {
+            $devIco = Join-Path (Join-Path $scriptRoot 'src') 'token-monitor.ico'
+        }
+        if (Test-Path -LiteralPath $devIco) {
+            $script:AppIcon = New-Object System.Drawing.Icon($devIco)
+        }
+    }
+}
+catch {}
+if ($null -eq $script:AppIcon) {
+    $script:AppIcon = [System.Drawing.SystemIcons]::Information
+}
+
+function Style-ModernForm {
+    param(
+        [System.Windows.Forms.Form]$Form
+    )
+
+    $Form.BackColor = $script:Colors.Background
+    $Form.ForeColor = $script:Colors.Text
+    $Form.Icon = $script:AppIcon
+    $Form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+
+    $Form.Add_HandleCreated({
+        Set-ImmersiveDarkMode -Hwnd $this.Handle
+    })
+}
+
+function Style-FlatButton {
+    param(
+        [System.Windows.Forms.Button]$Button,
+        [switch]$IsPrimary
+    )
+
+    $Button.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $Button.FlatAppearance.BorderSize = 0
+    $Button.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+    $Button.ForeColor = [System.Drawing.Color]::White
+
+    if ($IsPrimary) {
+        $Button.BackColor = $script:Colors.Accent
+        $Button.Add_MouseEnter({ $this.BackColor = $script:Colors.AccentHover })
+        $Button.Add_MouseLeave({ $this.BackColor = $script:Colors.Accent })
+    } else {
+        $Button.BackColor = $script:Colors.Border
+        $Button.Add_MouseEnter({ $this.BackColor = $script:Colors.RowHover })
+        $Button.Add_MouseLeave({ $this.BackColor = $script:Colors.Border })
+    }
+}
+
+function Style-DataGridView {
+    param(
+        [System.Windows.Forms.DataGridView]$Grid
+    )
+
+    $Grid.BackgroundColor = $script:Colors.Background
+    $Grid.ForeColor = $script:Colors.Text
+    $Grid.GridColor = $script:Colors.GridLine
+    $Grid.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+    $Grid.CellBorderStyle = [System.Windows.Forms.DataGridViewCellBorderStyle]::SingleHorizontal
+    $Grid.ColumnHeadersBorderStyle = [System.Windows.Forms.DataGridViewHeaderBorderStyle]::None
+    $Grid.EnableHeadersVisualStyles = $false
+
+    $Grid.ColumnHeadersDefaultCellStyle.BackColor = $script:Colors.HeaderBackground
+    $Grid.ColumnHeadersDefaultCellStyle.ForeColor = $script:Colors.TextDim
+    $Grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = $script:Colors.HeaderBackground
+    $Grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = $script:Colors.TextDim
+    $Grid.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font('Segoe UI', 9.5, [System.Drawing.FontStyle]::Bold)
+    $Grid.ColumnHeadersHeight = Scale-UiValue 32
+
+    $Grid.DefaultCellStyle.BackColor = $script:Colors.Background
+    $Grid.DefaultCellStyle.ForeColor = $script:Colors.Text
+    $Grid.DefaultCellStyle.SelectionBackColor = $script:Colors.RowHover
+    $Grid.DefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
+    $Grid.DefaultCellStyle.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
+    $Grid.RowTemplate.Height = Scale-UiValue 30
 }
 
 function Scale-UiValue {
@@ -266,12 +392,12 @@ function Get-HealthStateColor {
     param($HealthState)
 
     switch ([string]$HealthState) {
-        'empty' { return [System.Drawing.Color]::FromArgb(205, 30, 55) }
-        'low' { return [System.Drawing.Color]::FromArgb(190, 120, 0) }
-        'medium' { return [System.Drawing.Color]::FromArgb(250, 210, 35) }
-        'good' { return [System.Drawing.Color]::FromArgb(40, 175, 95) }
-        'disabled' { return [System.Drawing.Color]::FromArgb(80, 80, 80) }
-        default { return [System.Drawing.Color]::FromArgb(125, 125, 125) }
+        'empty' { return [System.Drawing.ColorTranslator]::FromHtml('#f38ba8') }
+        'low' { return [System.Drawing.ColorTranslator]::FromHtml('#fab387') }
+        'medium' { return [System.Drawing.ColorTranslator]::FromHtml('#f9e2af') }
+        'good' { return [System.Drawing.ColorTranslator]::FromHtml('#a6e3a1') }
+        'disabled' { return [System.Drawing.ColorTranslator]::FromHtml('#585b70') }
+        default { return [System.Drawing.ColorTranslator]::FromHtml('#a6adc8') }
     }
 }
 
@@ -290,17 +416,28 @@ function Update-DynamicTrayIcon {
         $enabledProviders = @($Snapshot.Providers) | Where-Object { $_.Enabled }
     }
 
-    # Create a 16x16 bitmap
-    $bmp = New-Object System.Drawing.Bitmap 16, 16
+    # Scale the bitmap size according to UI scaling to prevent blurry icons on high DPI
+    $size = [int](16 * $script:UiScale)
+    if ($size -lt 16) { $size = 16 }
+
+    $bmp = New-Object System.Drawing.Bitmap $size, $size
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.Clear([System.Drawing.Color]::Transparent)
 
+    $margin = 2.0 * $script:UiScale
+    $penWidth = 2.2 * $script:UiScale
+    $drawSize = $size - (2.0 * $margin)
+
     if ($enabledProviders.Count -eq 0) {
-        # If no providers or loading, draw a default gray circle
-        $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(100, 100, 100)), 2.5
-        $g.DrawEllipse($pen, 2, 2, 12, 12)
-        $pen.Dispose()
+        # If no providers or loading, draw our beautiful default application icon or a scaled neutral gray ring
+        if ($null -ne $script:AppIcon -and $script:AppIcon -ne [System.Drawing.SystemIcons]::Information) {
+            $g.DrawIcon($script:AppIcon, 0, 0)
+        } else {
+            $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(100, 100, 100)), $penWidth
+            $g.DrawEllipse($pen, $margin, $margin, $drawSize, $drawSize)
+            $pen.Dispose()
+        }
     }
     else {
         # Divide 360 degrees among enabled providers
@@ -317,8 +454,8 @@ function Update-DynamicTrayIcon {
             $color = Get-HealthStateColor -HealthState $provider.HealthState
 
             # Draw the segment
-            $pen = New-Object System.Drawing.Pen $color, 2.5
-            $g.DrawArc($pen, 2, 2, 12, 12, $startAngle, $sweepAngle)
+            $pen = New-Object System.Drawing.Pen $color, $penWidth
+            $g.DrawArc($pen, $margin, $margin, $drawSize, $drawSize, $startAngle, $sweepAngle)
             $pen.Dispose()
 
             # Advance to the next provider segment
@@ -334,7 +471,7 @@ function Update-DynamicTrayIcon {
     $script:NotifyIcon.Icon = $newIcon
 
     # Clean up old icon and bitmaps
-    if ($null -ne $oldIcon) {
+    if ($null -ne $oldIcon -and $oldIcon -ne $script:AppIcon) {
         $oldIcon.Dispose()
     }
     $g.Dispose()
@@ -419,10 +556,12 @@ function Show-Dashboard {
     $form.Size = New-UiSize 900 420
     $form.StartPosition = 'CenterScreen'
     $form.MinimumSize = New-UiSize 760 320
+    Style-ModernForm -Form $form
 
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Dock = 'Top'
     $panel.Height = Scale-UiValue 44
+    $panel.BackColor = $script:Colors.PanelBackground
 
     $refreshButton = New-Object System.Windows.Forms.Button
     $refreshButton.Text = 'Refresh'
@@ -431,6 +570,7 @@ function Show-Dashboard {
     $refreshButton.Left = Scale-UiValue 12
     $refreshButton.Top = Scale-UiValue 8
     $refreshButton.Add_Click({ Refresh-Usage })
+    Style-FlatButton -Button $refreshButton -IsPrimary
     $panel.Controls.Add($refreshButton)
 
     $settingsButton = New-Object System.Windows.Forms.Button
@@ -440,6 +580,7 @@ function Show-Dashboard {
     $settingsButton.Left = Scale-UiValue 112
     $settingsButton.Top = Scale-UiValue 8
     $settingsButton.Add_Click({ Show-Settings })
+    Style-FlatButton -Button $settingsButton
     $panel.Controls.Add($settingsButton)
 
     $openConfigButton = New-Object System.Windows.Forms.Button
@@ -449,6 +590,7 @@ function Show-Dashboard {
     $openConfigButton.Left = Scale-UiValue 212
     $openConfigButton.Top = Scale-UiValue 8
     $openConfigButton.Add_Click({ Invoke-Item -LiteralPath $script:SettingsPath })
+    Style-FlatButton -Button $openConfigButton
     $panel.Controls.Add($openConfigButton)
 
     $status = New-Object System.Windows.Forms.Label
@@ -456,6 +598,7 @@ function Show-Dashboard {
     $status.Left = Scale-UiValue 330
     $status.Top = Scale-UiValue 14
     $status.Text = 'Updated: never'
+    $status.ForeColor = $script:Colors.TextDim
     $panel.Controls.Add($status)
 
     $grid = New-Object System.Windows.Forms.DataGridView
@@ -467,9 +610,7 @@ function Show-Dashboard {
     $grid.SelectionMode = 'FullRowSelect'
     $grid.MultiSelect = $false
     $grid.AutoSizeColumnsMode = 'Fill'
-    $grid.BackgroundColor = [System.Drawing.SystemColors]::Window
-    $grid.ColumnHeadersHeight = Scale-UiValue 30
-    $grid.RowTemplate.Height = Scale-UiValue 28
+    Style-DataGridView -Grid $grid
 
     foreach ($column in @(
         @('Provider', 'Provider'),
@@ -541,16 +682,19 @@ function Show-Settings {
     $form.Size = New-UiSize 1040 420
     $form.StartPosition = 'CenterScreen'
     $form.MinimumSize = New-UiSize 900 320
+    Style-ModernForm -Form $form
 
     $top = New-Object System.Windows.Forms.Panel
     $top.Dock = 'Top'
     $top.Height = Scale-UiValue 42
+    $top.BackColor = $script:Colors.PanelBackground
 
     $refreshLabel = New-Object System.Windows.Forms.Label
     $refreshLabel.Text = 'Refresh seconds'
     $refreshLabel.AutoSize = $true
     $refreshLabel.Left = Scale-UiValue 12
     $refreshLabel.Top = Scale-UiValue 13
+    $refreshLabel.ForeColor = $script:Colors.Text
     $top.Controls.Add($refreshLabel)
 
     $refreshInput = New-Object System.Windows.Forms.NumericUpDown
@@ -560,6 +704,8 @@ function Show-Settings {
     $refreshInput.Left = Scale-UiValue 118
     $refreshInput.Top = Scale-UiValue 9
     $refreshInput.Width = Scale-UiValue 80
+    $refreshInput.BackColor = $script:Colors.Background
+    $refreshInput.ForeColor = $script:Colors.Text
     $top.Controls.Add($refreshInput)
 
     $maxFileLabel = New-Object System.Windows.Forms.Label
@@ -567,6 +713,7 @@ function Show-Settings {
     $maxFileLabel.AutoSize = $true
     $maxFileLabel.Left = Scale-UiValue 218
     $maxFileLabel.Top = Scale-UiValue 13
+    $maxFileLabel.ForeColor = $script:Colors.Text
     $top.Controls.Add($maxFileLabel)
 
     $maxFileInput = New-Object System.Windows.Forms.NumericUpDown
@@ -576,6 +723,8 @@ function Show-Settings {
     $maxFileInput.Left = Scale-UiValue 298
     $maxFileInput.Top = Scale-UiValue 9
     $maxFileInput.Width = Scale-UiValue 70
+    $maxFileInput.BackColor = $script:Colors.Background
+    $maxFileInput.ForeColor = $script:Colors.Text
     $top.Controls.Add($maxFileInput)
 
     $hint = New-Object System.Windows.Forms.Label
@@ -583,6 +732,7 @@ function Show-Settings {
     $hint.AutoSize = $true
     $hint.Left = Scale-UiValue 388
     $hint.Top = Scale-UiValue 13
+    $hint.ForeColor = $script:Colors.TextDim
     $top.Controls.Add($hint)
 
     $grid = New-Object System.Windows.Forms.DataGridView
@@ -591,9 +741,7 @@ function Show-Settings {
     $grid.AllowUserToDeleteRows = $false
     $grid.RowHeadersVisible = $false
     $grid.AutoSizeColumnsMode = 'Fill'
-    $grid.BackgroundColor = [System.Drawing.SystemColors]::Window
-    $grid.ColumnHeadersHeight = Scale-UiValue 30
-    $grid.RowTemplate.Height = Scale-UiValue 28
+    Style-DataGridView -Grid $grid
 
     $enabledCol = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
     $enabledCol.Name = 'Enabled'
@@ -636,6 +784,7 @@ function Show-Settings {
     $bottom = New-Object System.Windows.Forms.Panel
     $bottom.Dock = 'Bottom'
     $bottom.Height = Scale-UiValue 48
+    $bottom.BackColor = $script:Colors.PanelBackground
 
     $saveButton = New-Object System.Windows.Forms.Button
     $saveButton.Text = 'Save'
@@ -676,6 +825,7 @@ function Show-Settings {
         Refresh-Usage
         $form.Close()
     }.GetNewClosure())
+    Style-FlatButton -Button $saveButton -IsPrimary
     $bottom.Controls.Add($saveButton)
 
     $cancelButton = New-Object System.Windows.Forms.Button
@@ -687,6 +837,7 @@ function Show-Settings {
     $cancelButton.Add_Click({
         $this.FindForm().Close()
     })
+    Style-FlatButton -Button $cancelButton
     $bottom.Controls.Add($cancelButton)
 
     $openButton = New-Object System.Windows.Forms.Button
@@ -696,6 +847,7 @@ function Show-Settings {
     $openButton.Left = Scale-UiValue 212
     $openButton.Top = Scale-UiValue 10
     $openButton.Add_Click({ Invoke-Item -LiteralPath $script:SettingsPath })
+    Style-FlatButton -Button $openButton
     $bottom.Controls.Add($openButton)
 
     $form.Controls.Add($grid)
@@ -752,7 +904,7 @@ $contextMenu.Padding = New-Object System.Windows.Forms.Padding((Scale-UiValue 2)
 $script:ContextMenu = $contextMenu
 
 $notify = New-Object System.Windows.Forms.NotifyIcon
-$notify.Icon = [System.Drawing.SystemIcons]::Information
+$notify.Icon = $script:AppIcon
 $notify.Visible = $true
 $notify.ContextMenuStrip = $contextMenu
 $notify.Text = 'TokenMonitor'
