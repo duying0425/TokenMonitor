@@ -171,18 +171,18 @@ catch {
     $script:UiScale = 1.0
 }
 
-# Sleek Modern Dark Theme Color Palette
+# Sleek Modern Light Theme Color Palette
 $script:Colors = @{
-    Background       = [System.Drawing.ColorTranslator]::FromHtml('#1e1e2e')
-    PanelBackground  = [System.Drawing.ColorTranslator]::FromHtml('#181825')
-    HeaderBackground = [System.Drawing.ColorTranslator]::FromHtml('#11111b')
-    Text             = [System.Drawing.ColorTranslator]::FromHtml('#cdd6f4')
-    TextDim          = [System.Drawing.ColorTranslator]::FromHtml('#a6adc8')
-    Accent           = [System.Drawing.ColorTranslator]::FromHtml('#3572F6') # Vibrant Blue
-    AccentHover      = [System.Drawing.ColorTranslator]::FromHtml('#4C8BF5')
-    Border           = [System.Drawing.ColorTranslator]::FromHtml('#313244')
-    GridLine         = [System.Drawing.ColorTranslator]::FromHtml('#313244')
-    RowHover         = [System.Drawing.ColorTranslator]::FromHtml('#313244')
+    Background       = [System.Drawing.ColorTranslator]::FromHtml('#f8f9fa') # Soft white/gray background
+    PanelBackground  = [System.Drawing.ColorTranslator]::FromHtml('#ffffff') # Card/Panel background
+    HeaderBackground = [System.Drawing.ColorTranslator]::FromHtml('#e9ecef') # Header gray
+    Text             = [System.Drawing.ColorTranslator]::FromHtml('#212529') # Dark text
+    TextDim          = [System.Drawing.ColorTranslator]::FromHtml('#6c757d') # Muted text
+    Accent           = [System.Drawing.ColorTranslator]::FromHtml('#2563EB') # Tailwind Blue-600
+    AccentHover      = [System.Drawing.ColorTranslator]::FromHtml('#3B82F6') # Tailwind Blue-500
+    Border           = [System.Drawing.ColorTranslator]::FromHtml('#dee2e6') # Light border
+    GridLine         = [System.Drawing.ColorTranslator]::FromHtml('#e9ecef') # Soft grid line
+    RowHover         = [System.Drawing.ColorTranslator]::FromHtml('#e9ecef') # Soft selection
 }
 
 # Resolve and Load Icon
@@ -215,10 +215,6 @@ function Style-ModernForm {
     $Form.ForeColor = $script:Colors.Text
     $Form.Icon = $script:AppIcon
     $Form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-
-    $Form.Add_HandleCreated({
-        Set-ImmersiveDarkMode -Hwnd $this.Handle
-    })
 }
 
 function Style-FlatButton {
@@ -392,12 +388,12 @@ function Get-HealthStateColor {
     param($HealthState)
 
     switch ([string]$HealthState) {
-        'empty' { return [System.Drawing.ColorTranslator]::FromHtml('#f38ba8') }
-        'low' { return [System.Drawing.ColorTranslator]::FromHtml('#fab387') }
-        'medium' { return [System.Drawing.ColorTranslator]::FromHtml('#f9e2af') }
-        'good' { return [System.Drawing.ColorTranslator]::FromHtml('#a6e3a1') }
-        'disabled' { return [System.Drawing.ColorTranslator]::FromHtml('#585b70') }
-        default { return [System.Drawing.ColorTranslator]::FromHtml('#a6adc8') }
+        'empty' { return [System.Drawing.ColorTranslator]::FromHtml('#dc2626') } # Red-600
+        'low' { return [System.Drawing.ColorTranslator]::FromHtml('#ea580c') }   # Orange-600
+        'medium' { return [System.Drawing.ColorTranslator]::FromHtml('#ca8a04') }# Yellow-600
+        'good' { return [System.Drawing.ColorTranslator]::FromHtml('#16a34a') }  # Green-600
+        'disabled' { return [System.Drawing.ColorTranslator]::FromHtml('#94a3b8') }# Slate-400
+        default { return [System.Drawing.ColorTranslator]::FromHtml('#475569') } # Slate-600
     }
 }
 
