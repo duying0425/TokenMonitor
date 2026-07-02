@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 
 $script:TimestampFields = @(
     'timestamp',
@@ -1703,24 +1703,128 @@ function Get-TokenUsageSnapshot {
                 $commandStatus = 'Command produced no output'
             }
 
+            $eventsCount = 0
+            $filesCount = 0
             if (-not (Test-TokenProviderStatusOk -Status $commandStatus)) {
                 $cachedQuota = Get-EstimatedProviderQuotaFromCache -Cache $quotaCache -NowUtc $nowUtc -ProviderId $provider.Id
-                if ($null -ne $cachedQuota) {
+                
+                # Scan local logs if ScanRoots are configured for the provider to find potential local rate limit events
+                $files = @()
+                $events = @()
+                $hasScanRoots = $false
+                if (Get-Member -InputObject $provider -Name ScanRoots -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+                    $hasScanRoots = $provider.ScanRoots -and @($provider.ScanRoots).Count -gt 0
+                }
+                
+                if ($hasScanRoots) {
+                    $files = @(Get-CandidateUsageFiles -Provider $provider -SinceUtc $weeklyCutoff -MaxFileBytes $maxFileBytes)
+                    $eventsList = New-Object System.Collections.Generic.List[object]
+                    foreach ($file in $files) {
+                        foreach ($event in (Read-TokenEventsFromFile -File $file -ProviderId $provider.Id -SinceUtc $weeklyCutoff)) {
+                            $eventsList.Add($event)
+                        }
+                    }
+                    $events = @($eventsList.ToArray())
+                    $eventsCount = $events.Count
+                    $filesCount = $files.Count
+                }
+
+                $latestFiveHourLimitEvent = $null
+                $latestWeeklyLimitEvent = $null
+                if ($events.Count -gt 0) {
+                    $latestFiveHourLimitEvent = $events |
+                        Where-Object { $null -ne $_.FiveHourUsedPercent } |
+                        Sort-Object TimestampUtc -Descending |
+                        Select-Object -First 1
+                    $latestWeeklyLimitEvent = $events |
+                        Where-Object { $null -ne $_.WeeklyUsedPercent } |
+                        Sort-Object TimestampUtc -Descending |
+                        Select-Object -First 1
+                }
+
+                # 5-Hour Window Selection
+                $useFiveCache = $true
+                if ($null -eq $cachedQuota) {
+                    $useFiveCache = $false
+                } elseif ($null -ne $latestFiveHourLimitEvent) {
+                    if ($latestFiveHourLimitEvent.TimestampUtc -gt $cachedQuota.ObservedAtUtc) {
+                        $useFiveCache = $false
+                    }
+                }
+
+                if ($useFiveCache) {
                     $fiveHourRemainingPercent = $cachedQuota.FiveHourRemainingPercent
-                    $weeklyRemainingPercent = $cachedQuota.WeeklyRemainingPercent
                     $fiveHourResetHours = $cachedQuota.FiveHourResetHours
-                    $weeklyResetHours = $cachedQuota.WeeklyResetHours
                     $fiveHourResetAtUtc = $cachedQuota.FiveHourResetAtUtc
-                    $weeklyResetAtUtc = $cachedQuota.WeeklyResetAtUtc
                     if ($null -ne $fiveHourRemainingPercent) {
                         $fiveHourUsedDisplay = ('{0:N0}% used' -f (100.0 - [double]$fiveHourRemainingPercent))
                     }
+                } elseif ($null -ne $latestFiveHourLimitEvent) {
+                    $fiveHourRemainingPercent = Get-RemainingPercentFromRateLimit `
+                        -UsedPercent $latestFiveHourLimitEvent.FiveHourUsedPercent `
+                        -ResetAtUtc $latestFiveHourLimitEvent.FiveHourResetAtUtc `
+                        -NowUtc $nowUtc
+                    if ($null -ne $fiveHourRemainingPercent) {
+                        $fiveHourUsedDisplay = ('{0:N0}% used' -f [double]$latestFiveHourLimitEvent.FiveHourUsedPercent)
+                    }
+                    $fiveHourResetHours = Get-ResetHoursFromAt -Value $latestFiveHourLimitEvent.FiveHourResetAtUtc -NowUtc $nowUtc
+                    $fiveHourResetAtUtc = ConvertTo-TokenDateTime -Value $latestFiveHourLimitEvent.FiveHourResetAtUtc
+                }
+
+                # Weekly Window Selection
+                $useWeeklyCache = $true
+                if ($null -eq $cachedQuota) {
+                    $useWeeklyCache = $false
+                } elseif ($null -ne $latestWeeklyLimitEvent) {
+                    if ($latestWeeklyLimitEvent.TimestampUtc -gt $cachedQuota.ObservedAtUtc) {
+                        $useWeeklyCache = $false
+                    }
+                }
+
+                if ($useWeeklyCache) {
+                    $weeklyRemainingPercent = $cachedQuota.WeeklyRemainingPercent
+                    $weeklyResetHours = $cachedQuota.WeeklyResetHours
+                    $weeklyResetAtUtc = $cachedQuota.WeeklyResetAtUtc
                     if ($null -ne $weeklyRemainingPercent) {
                         $weeklyUsedDisplay = ('{0:N0}% used' -f (100.0 - [double]$weeklyRemainingPercent))
                     }
-                    $lastVisibleLocal = ([DateTime]$cachedQuota.ObservedAtUtc).ToLocalTime()
+                } elseif ($null -ne $latestWeeklyLimitEvent) {
+                    $weeklyRemainingPercent = Get-RemainingPercentFromRateLimit `
+                        -UsedPercent $latestWeeklyLimitEvent.WeeklyUsedPercent `
+                        -ResetAtUtc $latestWeeklyLimitEvent.WeeklyResetAtUtc `
+                        -NowUtc $nowUtc
+                    if ($null -ne $weeklyRemainingPercent) {
+                        $weeklyUsedDisplay = ('{0:N0}% used' -f [double]$latestWeeklyLimitEvent.WeeklyUsedPercent)
+                    }
+                    $weeklyResetHours = Get-ResetHoursFromAt -Value $latestWeeklyLimitEvent.WeeklyResetAtUtc -NowUtc $nowUtc
+                    $weeklyResetAtUtc = ConvertTo-TokenDateTime -Value $latestWeeklyLimitEvent.WeeklyResetAtUtc
+                }
+
+                # Determine status message and last visible timestamp based on which source is newer
+                if ($null -ne $cachedQuota -or $null -ne $latestFiveHourLimitEvent -or $null -ne $latestWeeklyLimitEvent) {
                     $isEstimatedFromCache = $true
-                    $commandStatus = ('Last visible {0}; cached while local service is offline' -f $lastVisibleLocal.ToString('yyyy-MM-dd HH:mm'))
+                    $newestUtc = [DateTime]::MinValue
+                    $statusDetail = ''
+
+                    if ($useFiveCache -or $useWeeklyCache) {
+                        if ($null -ne $cachedQuota -and $cachedQuota.ObservedAtUtc -gt $newestUtc) {
+                            $newestUtc = $cachedQuota.ObservedAtUtc
+                            $statusDetail = 'cached while local service is offline'
+                        }
+                    }
+                    if (-not $useFiveCache -and $null -ne $latestFiveHourLimitEvent -and $latestFiveHourLimitEvent.TimestampUtc -gt $newestUtc) {
+                        $newestUtc = $latestFiveHourLimitEvent.TimestampUtc
+                        $statusDetail = 'calculated offline from local logs'
+                    }
+                    if (-not $useWeeklyCache -and $null -ne $latestWeeklyLimitEvent -and $latestWeeklyLimitEvent.TimestampUtc -gt $newestUtc) {
+                        $newestUtc = $latestWeeklyLimitEvent.TimestampUtc
+                        $statusDetail = 'calculated offline from local logs'
+                    }
+
+                    if ($newestUtc -ne [DateTime]::MinValue) {
+                        $lastVisibleLocal = $newestUtc.ToLocalTime()
+                        $commandStatus = ('Last visible {0}; {1}' -f $lastVisibleLocal.ToString('yyyy-MM-dd HH:mm'), $statusDetail)
+                    }
                 }
             }
 
@@ -1753,8 +1857,8 @@ function Get-TokenUsageSnapshot {
                 WeeklyRemainingPercent = $weeklyRemainingPercent
                 FiveHourResetHours = $fiveHourResetHours
                 WeeklyResetHours = $weeklyResetHours
-                Events = 0
-                Files = 0
+                Events = $eventsCount
+                Files = $filesCount
                 LastEventLocal = $lastVisibleLocal
                 LastVisibleLocal = $lastVisibleLocal
                 IsEstimatedFromCache = $isEstimatedFromCache

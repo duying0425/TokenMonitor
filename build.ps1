@@ -78,7 +78,7 @@ $compileArgs = @{
     noConsole = $true
     title = 'TokenMonitor'
     product = 'TokenMonitor'
-    version = '1.4.0'
+    version = '1.4.1'
 }
 
 if ($null -ne $iconPath -and (Test-Path -LiteralPath $iconPath)) {
