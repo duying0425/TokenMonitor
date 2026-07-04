@@ -8,4 +8,6 @@ obj/
 /TokenMonitor.exe
 /TokenMonitor-new.exe
 /TokenUsage.psm1
-tests/
+tests/*
+!tests/convert_ico.py
+!tests/TokenUsage.Tests.ps1

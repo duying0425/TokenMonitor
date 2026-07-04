@@ -1158,7 +1158,7 @@ function Get-RemainingPercentFromRateLimit {
         return 100.0
     }
 
-    return [Math]::Max(0, [Math]::Min(100, [Math]::Round(100.0 - [double]$UsedPercent, 1)))
+    return [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round(100.0 - [double]$UsedPercent, 1)))
 }
 
 function Read-TokenMonitorQuotaCache {
@@ -1382,10 +1382,10 @@ function Get-ProviderTokenHealth {
     $five = $null
     $week = $null
     if ($hasFive) {
-        $five = [Math]::Max(0, [Math]::Min(100, [double]$FiveHourRemainingPercent))
+        $five = [Math]::Max(0.0, [Math]::Min(100.0, [double]$FiveHourRemainingPercent))
     }
     if ($hasWeek) {
-        $week = [Math]::Max(0, [Math]::Min(100, [double]$WeeklyRemainingPercent))
+        $week = [Math]::Max(0.0, [Math]::Min(100.0, [double]$WeeklyRemainingPercent))
     }
 
     if (($null -ne $five -and $five -le 0) -or ($null -ne $week -and $week -le 0)) {
@@ -1672,20 +1672,20 @@ function Get-TokenUsageSnapshot {
                     }
 
                     if ($null -ne $commandFiveRemaining) {
-                        $fiveHourRemainingPercent = [Math]::Max(0, [Math]::Min(100, [Math]::Round([double]$commandFiveRemaining, 1)))
+                        $fiveHourRemainingPercent = [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round([double]$commandFiveRemaining, 1)))
                         $fiveHourUsedDisplay = ('{0:N0}% used' -f (100.0 - $fiveHourRemainingPercent))
                     }
                     elseif ($null -ne $commandFiveUsedPercent) {
-                        $fiveHourRemainingPercent = [Math]::Max(0, [Math]::Round(100.0 - [double]$commandFiveUsedPercent, 1))
+                        $fiveHourRemainingPercent = [Math]::Max(0.0, [Math]::Round(100.0 - [double]$commandFiveUsedPercent, 1))
                         $fiveHourUsedDisplay = ('{0:N0}% used' -f [double]$commandFiveUsedPercent)
                     }
 
                     if ($null -ne $commandWeekRemaining) {
-                        $weeklyRemainingPercent = [Math]::Max(0, [Math]::Min(100, [Math]::Round([double]$commandWeekRemaining, 1)))
+                        $weeklyRemainingPercent = [Math]::Max(0.0, [Math]::Min(100.0, [Math]::Round([double]$commandWeekRemaining, 1)))
                         $weeklyUsedDisplay = ('{0:N0}% used' -f (100.0 - $weeklyRemainingPercent))
                     }
                     elseif ($null -ne $commandWeekUsedPercent) {
-                        $weeklyRemainingPercent = [Math]::Max(0, [Math]::Round(100.0 - [double]$commandWeekUsedPercent, 1))
+                        $weeklyRemainingPercent = [Math]::Max(0.0, [Math]::Round(100.0 - [double]$commandWeekUsedPercent, 1))
                         $weeklyUsedDisplay = ('{0:N0}% used' -f [double]$commandWeekUsedPercent)
                     }
 
