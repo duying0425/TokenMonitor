@@ -74,8 +74,18 @@ git commit -m "chore(release): bump version to v$newVersion"
 Write-Host "Creating tag v$newVersion..."
 git tag "v$newVersion"
 
-Write-Host "Pushing changes and tag to origin..."
+Write-Host "Pushing main branch to origin..."
 git push origin main
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to push main branch to origin."
+    exit 1
+}
+
+Write-Host "Pushing tag v$newVersion to origin..."
 git push origin "v$newVersion"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to push tag v$newVersion to origin."
+    exit 1
+}
 
 Write-Host "Successfully released v$newVersion! Check GitHub Actions for build status." -ForegroundColor Green
