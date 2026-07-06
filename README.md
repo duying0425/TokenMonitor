@@ -40,7 +40,7 @@ Install `ps2exe`, then build the Windows tray executable from the repository roo
 瀹夎 `ps2exe` 鍚庯紝鍦ㄤ粨搴撴牴鐩綍鎵ц浠ヤ笅鍛戒护鏋勫缓 Windows 鎵樼洏绋嬪簭锛?
 ```powershell
 Install-Module ps2exe -Scope CurrentUser
-ps2exe .\src\TokenMonitor.ps1 .\bin\TokenMonitor.exe -STA -noConsole -title TokenMonitor -product TokenMonitor -version 1.4.2 -embedFiles @{'.\TokenUsage.psm1'='.\src\TokenUsage.psm1'}
+ps2exe .\src\TokenMonitor.ps1 .\bin\TokenMonitor.exe -STA -noConsole -title TokenMonitor -product TokenMonitor -version 1.4.3 -embedFiles @{'.\TokenUsage.psm1'='.\src\TokenUsage.psm1'}
 ```
 
 The generated release executable is `bin\TokenMonitor.exe`. It embeds `src\TokenUsage.psm1` and extracts it as `TokenUsage.psm1` beside the executable on first run.
@@ -123,4 +123,5 @@ For Antigravity, the tool fetches real-time rolling compute limits from the runn
 瀵逛簬 Antigravity锛岃宸ュ叿浼氫粠姝ｅ湪杩愯鐨?Antigravity 鎴?Antigravity IDE 鏈湴 language server 鑾峰彇瀹炴椂婊氬姩棰濆害锛岀洰鍓嶅彧缁熻鍏朵腑鐨?Gemini Models 閰嶉缁勩€?
 When Antigravity is not running, TokenMonitor uses the last visible Antigravity quota and bucket reset times from cache until the next live query succeeds. Cached quota percentages are not estimated upward over time.
 褰?Antigravity 鏈繍琛屾椂锛孴okenMonitor 浼氫娇鐢ㄧ紦瀛樹腑鐨勬渶鍚庝竴娆″彲瑙?Antigravity 棰濆害鍜屾《鎭㈠鏃堕棿锛岀洿鍒颁笅涓€娆″疄鏃舵煡璇㈡垚鍔熴€傜紦瀛橀搴︾櫨鍒嗘瘮涓嶄細闅忔椂闂村悜涓婁及绠椼€?
+
 
