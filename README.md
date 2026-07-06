@@ -1,48 +1,48 @@
-# TokenMonitor
+﻿# TokenMonitor
 
 Windows taskbar tray monitor for local AI coding-tool token usage.
-Windows 绯荤粺鎵樼洏涓殑鏈湴 AI 缂栫▼宸ュ叿 Token 浣跨敤閲忕洃瑙嗗櫒銆?
-## What it does / 鍔熻兘鐗规€?
+Windows 缁崵绮洪幍妯兼磸娑擃厾娈戦張顒€婀?AI 缂傛牜鈻煎銉ュ徔 Token 娴ｈ法鏁ら柌蹇曟磧鐟欏棗娅掗妴?
+## What it does / 閸旂喕鍏橀悧瑙勨偓?
 - Runs as a Windows tray icon.
-  浠?Windows 绯荤粺鎵樼洏鍥炬爣鐨勫舰寮忚繍琛屻€?- Shows an always-visible status strip docked above the Windows taskbar.
-  鍦?Windows 浠诲姟鏍忎笂鏂规樉绀轰竴涓父鏄剧殑鐘舵€佹潯锛圫tatus Strip锛夈€?- Shows a dashboard for Antigravity, Codex/ChatGPT, and Claude Code.
-  涓?Antigravity銆丆odex/ChatGPT 鍜?Claude Code 鎻愪緵涓撶敤鐨勬帶鍒堕潰鏉匡紙Dashboard锛夈€?- Calculates rolling 5-hour and 7-day usage from local JSON/JSONL logs (for providers without a query command configured, e.g. Antigravity).
-  浠庢湰鍦扮殑 JSON/JSONL 鏃ュ織涓绠?5 灏忔椂鍜?7 澶╂粴鍔ㄧ獥鍙ｇ殑浣跨敤閲忥紙閫傜敤浜庢湭閰嶇疆 API 鏌ヨ鍛戒护鐨?Provider锛屼緥濡?Antigravity锛夈€?- Converts usage to remaining percentages using quotas that you configure.
-  鏍规嵁鎮ㄩ厤缃殑棰濆害锛圦uota锛夛紝鑷姩灏嗕娇鐢ㄩ噺杞崲涓哄墿浣欑櫨鍒嗘瘮銆?- For providers with a query command configured (such as Antigravity, Codex/ChatGPT, and Claude Code), queries the relevant live usage endpoint directly, bypassing local log scanning.
-  瀵逛簬閰嶇疆浜嗘煡璇㈠懡浠わ紙Command锛夌殑 Provider锛堜緥濡?Antigravity銆丆odex/ChatGPT 鍜?Claude Code锛夛紝鐩存帴鏌ヨ瀵瑰簲鐨勫疄鏃堕搴︽帴鍙ｏ紝骞惰烦杩囨湰鍦版棩蹇楁枃浠舵壂鎻忋€?- Stores settings in `%APPDATA%\TokenMonitor\settings.json`.
-  璁剧疆瀛樺偍鍦?`%APPDATA%\TokenMonitor\settings.json`銆?- Stores the last visible Antigravity quota in `%APPDATA%\TokenMonitor\quota-cache.json`, so the tray can show the cached quota and reset time while Antigravity is closed.
-  浼氬皢鏈€鍚庝竴娆″彲瑙佺殑 Antigravity 棰濆害瀛樺偍鍦?`%APPDATA%\TokenMonitor\quota-cache.json`锛屽洜姝?Antigravity 鍏抽棴鏃舵墭鐩樹粛鍙樉绀虹紦瀛橀搴﹀拰鎭㈠鏃堕棿銆?
+  娴?Windows 缁崵绮洪幍妯兼磸閸ョ偓鐖ｉ惃鍕埌瀵繗绻嶇悰灞烩偓?- Shows an always-visible status strip docked above the Windows taskbar.
+  閸?Windows 娴犺濮熼弽蹇庣瑐閺傝妯夌粈杞扮娑擃亜鐖堕弰鍓ф畱閻樿埖鈧焦娼敍鍦玹atus Strip閿涘鈧?- Shows a dashboard for Antigravity, Codex/ChatGPT, and Claude Code.
+  娑?Antigravity閵嗕竼odex/ChatGPT 閸?Claude Code 閹绘劒绶垫稉鎾舵暏閻ㄥ嫭甯堕崚鍫曟桨閺夊尅绱橠ashboard閿涘鈧?- Calculates rolling 5-hour and 7-day usage from local JSON/JSONL logs (for providers without a query command configured, e.g. Antigravity).
+  娴犲孩婀伴崷鎵畱 JSON/JSONL 閺冦儱绻旀稉顓☆吀缁?5 鐏忓繑妞傞崪?7 婢垛晜绮撮崝銊х崶閸欙絿娈戞担璺ㄦ暏闁插骏绱欓柅鍌滄暏娴滃孩婀柊宥囩枂 API 閺屻儴顕楅崨鎴掓姢閻?Provider閿涘奔绶ユ俊?Antigravity閿涘鈧?- Converts usage to remaining percentages using quotas that you configure.
+  閺嶈宓侀幃銊╁帳缂冾喚娈戞０婵嗗閿涘湨uota閿涘绱濋懛顏勫З鐏忓棔濞囬悽銊╁櫤鏉烆剚宕叉稉鍝勫⒖娴ｆ瑧娅ㄩ崚鍡樼槷閵?- For providers with a query command configured (such as Antigravity, Codex/ChatGPT, and Claude Code), queries the relevant live usage endpoint directly, bypassing local log scanning.
+  鐎甸€涚艾闁板秶鐤嗘禍鍡樼叀鐠囥垹鎳℃禒銈忕礄Command閿涘娈?Provider閿涘牅绶ユ俊?Antigravity閵嗕竼odex/ChatGPT 閸?Claude Code閿涘绱濋惄瀛樺复閺屻儴顕楃€电懓绨查惃鍕杽閺冨爼顤傛惔锔藉复閸欙綇绱濋獮鎯扮儲鏉╁洦婀伴崷鐗堟）韫囨鏋冩禒鑸靛閹诲繈鈧?- Stores settings in `%APPDATA%\TokenMonitor\settings.json`.
+  鐠佸墽鐤嗙€涙ê鍋嶉崷?`%APPDATA%\TokenMonitor\settings.json`閵?- Stores the last visible Antigravity quota in `%APPDATA%\TokenMonitor\quota-cache.json`, so the tray can show the cached quota and reset time while Antigravity is closed.
+  娴兼艾鐨㈤張鈧崥搴濈濞嗏€冲讲鐟欎胶娈?Antigravity 妫版繂瀹崇€涙ê鍋嶉崷?`%APPDATA%\TokenMonitor\quota-cache.json`閿涘苯娲滃?Antigravity 閸忔娊妫撮弮鑸靛閻╂ü绮涢崣顖涙▔缁€铏圭处鐎涙﹢顤傛惔锕€鎷伴幁銏狀槻閺冨爼妫块妴?
 This is a local monitor and query tool. For providers without a query command configured, remaining quota is computed as:
-鏈蒋浠舵槸涓€涓湰鍦扮洃瑙嗗拰鏌ヨ宸ュ叿銆傚浜庢湭閰嶇疆鏌ヨ鍛戒护鐨?Provider锛屽叾鍓╀綑閰嶉璁＄畻鍏紡涓猴細
+閺堫剝钂嬫禒鑸垫Ц娑撯偓娑擃亝婀伴崷鎵磧鐟欏棗鎷伴弻銉嚄瀹搞儱鍙块妴鍌氼嚠娴滃孩婀柊宥囩枂閺屻儴顕楅崨鎴掓姢閻?Provider閿涘苯鍙鹃崜鈺€缍戦柊宥夘杺鐠侊紕鐣婚崗顒€绱℃稉鐚寸窗
 
 ```text
 remaining % = max(0, quota - locally observed usage) / quota
 ```
 
 For providers with a query command configured, it queries the official usage APIs in the background using your local credentials/session tokens to fetch real-time remaining quota percentages, skipping local calculations. If the command fails, it reports the error directly.
-瀵逛簬閰嶇疆浜嗘煡璇㈠懡浠ょ殑 Provider锛屽畠浼氬湪鍚庡彴浣跨敤鎮ㄧ殑鏈湴鍑嵁/浼氳瘽 Token 鐩存帴鏌ヨ瀹樻柟鐨勪娇鐢ㄩ噺 API锛岃幏鍙栧疄鏃剁殑閰嶉鍓╀綑鐧惧垎姣旓紝璺宠繃浠讳綍鏈湴璁＄畻銆傚鏋滃懡浠ゆ墽琛屽け璐ワ紝鍒欑洿鎺ユ姤鍛婇敊璇€?
-## Run / 杩愯
+鐎甸€涚艾闁板秶鐤嗘禍鍡樼叀鐠囥垹鎳℃禒銈囨畱 Provider閿涘苯鐣犳导姘躬閸氬骸褰存担璺ㄦ暏閹劎娈戦張顒€婀撮崙顓熷祦/娴兼俺鐦?Token 閻╁瓨甯撮弻銉嚄鐎规ɑ鏌熼惃鍕▏閻劑鍣?API閿涘矁骞忛崣鏍х杽閺冨墎娈戦柊宥夘杺閸撯晙缍戦惂鎯у瀻濮ｆ棑绱濈捄瀹犵箖娴犺缍嶉張顒€婀寸拋锛勭暬閵嗗倸顩ч弸婊冩嚒娴犮倖澧界悰灞姐亼鐠愩儻绱濋崚娆戞纯閹恒儲濮ら崨濠囨晩鐠囶垬鈧?
+## Run / 鏉╂劘顢?
 
 From this folder:
-鍦ㄦ鐩綍涓嬫墽琛岋細
+閸︺劍顒濋惄顔肩秿娑撳澧界悰宀嬬窗
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\start-token-monitor.ps1
 ```
 
 Double-click the tray icon or the status strip to open the dashboard. Right-click either one for Dashboard, Refresh, Settings, status strip visibility, and Exit.
-鍙屽嚮鎵樼洏鍥炬爣鎴栫姸鎬佹潯鍙互鎵撳紑鎺у埗闈㈡澘锛圖ashboard锛夈€傚彸閿偣鍑诲畠浠彲浠ュ脊鍑鸿彍鍗曪細鎺у埗闈㈡澘銆佹墜鍔ㄥ埛鏂般€佽缃€佸垏鎹㈢姸鎬佹潯鏄鹃殣浠ュ強閫€鍑恒€?
+閸欏苯鍤幍妯兼磸閸ョ偓鐖ｉ幋鏍Ц閹焦娼崣顖欎簰閹垫挸绱戦幒褍鍩楅棃銏℃緲閿涘湒ashboard閿涘鈧倸褰搁柨顔惧仯閸戣鐣犳禒顒€褰叉禒銉ヨ剨閸戦缚褰嶉崡鏇窗閹貉冨煑闂堛垺婢橀妴浣瑰閸斻劌鍩涢弬鑸偓浣筋啎缂冾喓鈧礁鍨忛幑銏㈠Ц閹焦娼弰楣冩娴犮儱寮烽柅鈧崙鎭掆偓?
 By default it refreshes every 1 minute.
-榛樿姣?1 鍒嗛挓鍒锋柊涓€娆°€?
-## Release and Build / 发布与构建
+姒涙顓诲В?1 閸掑棝鎸撻崚閿嬫煀娑撯偓濞喡扳偓?
+## Release and Build / 鍙戝竷涓庢瀯寤?
 
 The compilation of `TokenMonitor.exe` is automated on GitHub Actions using `ps2exe` on Windows runners. We do not track or build the executable locally.
-`TokenMonitor.exe` 的编译和发布过程已完全托管至 GitHub Actions（在 `windows-latest` 运行器上使用 `ps2exe` 编译），本地不再跟踪编译出的二进制文件。
+`TokenMonitor.exe` 鐨勭紪璇戝拰鍙戝竷杩囩▼宸插畬鍏ㄦ墭绠¤嚦 GitHub Actions锛堝湪 `windows-latest` 杩愯鍣ㄤ笂浣跨敤 `ps2exe` 缂栬瘧锛夛紝鏈湴涓嶅啀璺熻釜缂栬瘧鍑虹殑浜岃繘鍒舵枃浠躲€?
 
-### How to trigger a new release / 如何触发新版本发布
+### How to trigger a new release / 濡備綍瑙﹀彂鏂扮増鏈彂甯?
 
 Run the release script locally to automatically increment the version, commit, tag, and trigger the GitHub Actions build workflow:
-在本地运行发布脚本，它将自动递增版本号、提交更改、创建 Git 标签并推送到 GitHub 触发自动构建工作流：
+鍦ㄦ湰鍦拌繍琛屽彂甯冭剼鏈紝瀹冨皢鑷姩閫掑鐗堟湰鍙枫€佹彁浜ゆ洿鏀广€佸垱寤?Git 鏍囩骞舵帹閫佸埌 GitHub 瑙﹀彂鑷姩鏋勫缓宸ヤ綔娴侊細
 
 ```powershell
 .\release.ps1
@@ -54,25 +54,25 @@ Once triggered, GitHub Actions will:
 - Compile `bin/TokenMonitor.exe` using `.\build.ps1`
 - Publish a new GitHub Release with the compiled binary attached as a release asset.
 
-触发后，GitHub Actions 会自动执行以下步骤：
-- 检出代码库
-- 安装 `ps2exe` 工具
-- 运行 `.\build.ps1` 编译出 `bin/TokenMonitor.exe`
-- 创建新的 GitHub Release，并将编译好的 `TokenMonitor.exe` 作为发布产物上传。
-## Configure quotas / 閰嶇疆棰濆害
+瑙﹀彂鍚庯紝GitHub Actions 浼氳嚜鍔ㄦ墽琛屼互涓嬫楠わ細
+- 妫€鍑轰唬鐮佸簱
+- 瀹夎 `ps2exe` 宸ュ叿
+- 杩愯 `.\build.ps1` 缂栬瘧鍑?`bin/TokenMonitor.exe`
+- 鍒涘缓鏂扮殑 GitHub Release锛屽苟灏嗙紪璇戝ソ鐨?`TokenMonitor.exe` 浣滀负鍙戝竷浜х墿涓婁紶銆?
+## Configure quotas / 闁板秶鐤嗘０婵嗗
 
 Open Settings from the tray menu.
-浠庢墭鐩樿彍鍗曚腑鎵撳紑 Settings锛堣缃級銆?
+娴犲孩澧惄妯垮綅閸楁洑鑵戦幍鎾崇磻 Settings閿涘牐顔曠純顕嗙礆閵?
 - `5h quota`: token budget for the rolling 5-hour window.
-  `5h quota`锛? 灏忔椂婊氬姩绐楀彛鍐呯殑 Token 闄愰棰勭畻銆?- `7d quota`: token budget for the rolling 7-day window.
-  `7d quota`锛? 澶╋紙姣忓懆锛夋粴鍔ㄧ獥鍙ｅ唴鐨?Token 闄愰棰勭畻銆?- `Scan roots`: semicolon-separated files or folders to scan.
-  `Scan roots`锛氬垎鍙烽殧寮€鐨勬湰鍦版棩蹇楁壂鎻忔牴鐩綍鎴栨枃浠惰矾寰勩€?- `File patterns`: usually `*.jsonl; *.json`.
-  `File patterns`锛氭壂鎻忕殑鏂囦欢绫诲瀷鍖归厤锛岄€氬父鏄?`*.jsonl; *.json`銆?- `Max file MB`: logs larger than this are skipped during tray refresh.
-  `Max file MB`锛氭墭鐩樺埛鏂版椂锛岃秴鍑鸿澶у皬鐨勬棩蹇楁枃浠跺皢琚烦杩囦笉杩涜鎵弿銆?- `Command JSON source`: optional PowerShell command. If set, it must print JSON and can override locally scanned values.
-  `Command JSON source`锛氬彲閫夌殑 PowerShell 鏌ヨ鍛戒护銆傚鏋滆缃簡姝ゅ懡浠わ紝瀹冨繀椤昏緭鍑?JSON 鏍煎紡鐨勫唴瀹癸紝鐢ㄦ潵瑕嗙洊鎴栨浛浠ｆ湰鍦版壂鎻忚绠楀嚭鐨勬暟鍊笺€?- `0` quota means unknown, so the percentage is displayed as `n/a`.
-  闄愰璁句负 `0` 浠ｈ〃閰嶉鏈煡锛岀櫨鍒嗘瘮灏嗘樉绀轰负 `n/a`銆?
+  `5h quota`閿? 鐏忓繑妞傚姘З缁愭褰涢崘鍛畱 Token 闂勬劙顤傛０鍕暬閵?- `7d quota`: token budget for the rolling 7-day window.
+  `7d quota`閿? 婢垛晪绱欏В蹇撴噯閿涘绮撮崝銊х崶閸欙絽鍞撮惃?Token 闂勬劙顤傛０鍕暬閵?- `Scan roots`: semicolon-separated files or folders to scan.
+  `Scan roots`閿涙艾鍨庨崣鐑芥瀵偓閻ㄥ嫭婀伴崷鐗堟）韫囨澹傞幓蹇旂壌閻╊喖缍嶉幋鏍ㄦ瀮娴犳儼鐭惧鍕┾偓?- `File patterns`: usually `*.jsonl; *.json`.
+  `File patterns`閿涙碍澹傞幓蹇曟畱閺傚洣娆㈢猾璇茬€烽崠褰掑帳閿涘矂鈧艾鐖堕弰?`*.jsonl; *.json`閵?- `Max file MB`: logs larger than this are skipped during tray refresh.
+  `Max file MB`閿涙碍澧惄妯哄煕閺傜増妞傞敍宀冪Т閸戦缚顕氭径褍鐨惃鍕）韫囨鏋冩禒璺虹殺鐞氼偉鐑︽潻鍥︾瑝鏉╂稖顢戦幍顐ｅ伎閵?- `Command JSON source`: optional PowerShell command. If set, it must print JSON and can override locally scanned values.
+  `Command JSON source`閿涙艾褰查柅澶屾畱 PowerShell 閺屻儴顕楅崨鎴掓姢閵嗗倸顩ч弸婊嗩啎缂冾喕绨″銈呮嚒娴犮倧绱濈€瑰啫绻€妞ゆ槒绶崙?JSON 閺嶇厧绱￠惃鍕敶鐎圭櫢绱濋悽銊︽降鐟曞棛娲婇幋鏍ㄦ禌娴狅絾婀伴崷鐗堝閹诲繗顓哥粻妤€鍤惃鍕殶閸婄鈧?- `0` quota means unknown, so the percentage is displayed as `n/a`.
+  闂勬劙顤傜拋鍙ヨ礋 `0` 娴狅綀銆冮柊宥夘杺閺堫亞鐓￠敍宀€娅ㄩ崚鍡樼槷鐏忓棙妯夌粈杞拌礋 `n/a`閵?
 Command JSON output can use any of these fields:
-鑷畾涔夊懡浠よ緭鍑虹殑 JSON 鍙互鍖呭惈浠ヤ笅浠讳竴瀛楁锛?
+閼奉亜鐣炬稊澶婃嚒娴犮倛绶崙铏规畱 JSON 閸欘垯浜掗崠鍛儓娴犮儰绗呮禒璁崇鐎涙顔岄敍?
 ```json
 {
   "fiveHourUsed": 123456,
@@ -83,9 +83,9 @@ Command JSON output can use any of these fields:
 ```
 
 You can also emit `fiveHourUsedPercent` and `weeklyUsedPercent`; the app will convert them to remaining percentages.
-鎮ㄤ篃鍙互杈撳嚭 `fiveHourUsedPercent`锛?灏忔椂宸茬敤鐧惧垎姣旓級鍜?`weeklyUsedPercent`锛堟瘡鍛ㄥ凡鐢ㄧ櫨鍒嗘瘮锛夛紝搴旂敤绋嬪簭浼氳嚜鍔ㄥ皢鍏惰浆鎹负鍓╀綑鐧惧垎姣斻€?
+閹劋绡冮崣顖欎簰鏉堟挸鍤?`fiveHourUsedPercent`閿?鐏忓繑妞傚鑼暏閻ф儳鍨庡В鏃撶礆閸?`weeklyUsedPercent`閿涘牊鐦￠崨銊ュ嚒閻劎娅ㄩ崚鍡樼槷閿涘绱濇惔鏃傛暏缁嬪绨导姘冲殰閸斻劌鐨㈤崗鎯版祮閹诡澀璐熼崜鈺€缍戦惂鎯у瀻濮ｆ柣鈧?
 Default scan roots:
-榛樿鏈湴鏃ュ織鎵弿鏍圭洰褰曪細
+姒涙顓婚張顒€婀撮弮銉ョ箶閹殿偅寮块弽鍦窗瑜版洩绱?
 
 ```text
 Antigravity:
@@ -102,40 +102,41 @@ Claude Code:
 %USERPROFILE%\.claude\sessions
 ```
 
-### Credentials setup / 鍑嵁璁剧疆
+### Credentials setup / 閸戭厽宓佺拋鍓х枂
 
 For providers using query commands, you must configure local authorization files:
-瀵逛簬浣跨敤鏌ヨ鍛戒护锛圕ommand锛夋媺鍙栧畼鏂规暟鎹殑 Provider锛屾偍闇€瑕侀厤缃湰鍦扮殑鎺堟潈/鍑嵁鏂囦欢锛?
+鐎甸€涚艾娴ｈ法鏁ら弻銉嚄閸涙垝鎶ら敍鍦昽mmand閿涘濯洪崣鏍х暭閺傝鏆熼幑顔炬畱 Provider閿涘本鍋嶉棁鈧憰渚€鍘ょ純顔芥拱閸︽壆娈戦幒鍫熸綀/閸戭厽宓侀弬鍥︽閿?
 - **Codex / ChatGPT**: Automatically created at `~/.codex/auth.json` when you log in through the Codex CLI.
-  **Codex / ChatGPT**锛氬綋鎮ㄥ湪缁堢涓娇鐢?Codex CLI 鐧诲綍鍚庯紝浼氳嚜鍔ㄥ湪 `~/.codex/auth.json` 鐢熸垚璇ユ枃浠躲€?- **Claude Code**: Automatically created at `~/.claude/.credentials.json` when you log in through the Claude CLI.
-  **Claude Code**锛氬綋鎮ㄥ湪缁堢涓娇鐢?Claude CLI 鐧诲綍鍚庯紝浼氳嚜鍔ㄥ湪 `~/.claude/.credentials.json` 鐢熸垚璇ュ嚟鎹€?- **Antigravity**: No Gemini web cookies are required. Start Antigravity or Antigravity IDE and TokenMonitor queries Antigravity's local language-server RPC (`RetrieveUserQuotaSummary`) using the CSRF token and localhost port written to `%APPDATA%\Antigravity\logs\main.log` or `%APPDATA%\Antigravity IDE\logs\**\ls-main.log`.
-  **Antigravity**锛氫笉闇€瑕?Gemini 缃戦〉 Cookie銆傚惎鍔?Antigravity 鎴?Antigravity IDE 鍚庯紝TokenMonitor 浼氳鍙?`%APPDATA%\Antigravity\logs\main.log` 鎴?`%APPDATA%\Antigravity IDE\logs\**\ls-main.log` 涓殑鏈湴绔彛鍜?CSRF token锛屽苟璋冪敤 Antigravity 鏈湴 language-server RPC锛坄RetrieveUserQuotaSummary`锛夈€?
+  **Codex / ChatGPT**閿涙艾缍嬮幃銊ユ躬缂佸牏顏稉顓濆▏閻?Codex CLI 閻ц缍嶉崥搴礉娴兼俺鍤滈崝銊ユ躬 `~/.codex/auth.json` 閻㈢喐鍨氱拠銉︽瀮娴犺翰鈧?- **Claude Code**: Automatically created at `~/.claude/.credentials.json` when you log in through the Claude CLI.
+  **Claude Code**閿涙艾缍嬮幃銊ユ躬缂佸牏顏稉顓濆▏閻?Claude CLI 閻ц缍嶉崥搴礉娴兼俺鍤滈崝銊ユ躬 `~/.claude/.credentials.json` 閻㈢喐鍨氱拠銉ュ殶閹诡喓鈧?- **Antigravity**: No Gemini web cookies are required. Start Antigravity or Antigravity IDE and TokenMonitor queries Antigravity's local language-server RPC (`RetrieveUserQuotaSummary`) using the CSRF token and localhost port written to `%APPDATA%\Antigravity\logs\main.log` or `%APPDATA%\Antigravity IDE\logs\**\ls-main.log`.
+  **Antigravity**閿涙矮绗夐棁鈧憰?Gemini 缂冩垿銆?Cookie閵嗗倸鎯庨崝?Antigravity 閹?Antigravity IDE 閸氬函绱漈okenMonitor 娴兼俺顕伴崣?`%APPDATA%\Antigravity\logs\main.log` 閹?`%APPDATA%\Antigravity IDE\logs\**\ls-main.log` 娑擃厾娈戦張顒€婀寸粩顖氬經閸?CSRF token閿涘苯鑻熺拫鍐暏 Antigravity 閺堫剙婀?language-server RPC閿涘潉RetrieveUserQuotaSummary`閿涘鈧?
   This intentionally does not call `https://gemini.google.com/usage`, because Gemini web quota and Antigravity quota are separate.
-  杩欓噷鏈夋剰涓嶈皟鐢?`https://gemini.google.com/usage`锛屽洜涓?Gemini 缃戦〉棰濆害鍜?Antigravity 棰濆害鏄袱濂椾笉鍚岀殑闄愬埗銆?
-## CLI checks / 鍛戒护琛屾鏌?
+  鏉╂瑩鍣烽張澶嬪壈娑撳秷鐨熼悽?`https://gemini.google.com/usage`閿涘苯娲滄稉?Gemini 缂冩垿銆夋０婵嗗閸?Antigravity 妫版繂瀹抽弰顖欒⒈婵傛ぞ绗夐崥宀€娈戦梽鎰煑閵?
+## CLI checks / 閸涙垝鎶ょ悰灞绢梾閺?
 Print current local usage summary without opening the tray app:
-涓嶅惎鍔ㄦ墭鐩樼▼搴忥紝鐩存帴鍦ㄧ粓绔墦鍗板綋鍓嶇殑鏈湴浣跨敤鎽樿锛?
+娑撳秴鎯庨崝銊﹀閻╂鈻兼惔蹇ョ礉閻╁瓨甯撮崷銊х矒缁旑垱澧﹂崡鏉跨秼閸撳秶娈戦張顒€婀存担璺ㄦ暏閹芥顩﹂敍?
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\src\TokenMonitor.ps1 -Dump
 ```
 
 Create/default-check settings and print their path:
-鍒涘缓/妫€鏌ラ粯璁ら厤缃枃浠剁殑鐘舵€侊紝骞惰緭鍑洪厤缃枃浠剁殑璺緞锛?
+閸掓稑缂?濡偓閺屻儵绮拋銈夊帳缂冾喗鏋冩禒鍓佹畱閻樿埖鈧緤绱濋獮鎯扮翻閸戞椽鍘ょ純顔芥瀮娴犲墎娈戠捄顖氱窞閿?
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\src\TokenMonitor.ps1 -SelfTest
 ```
 
-## Limits / 闄愰璇存槑
+## Limits / 闂勬劙顤傜拠瀛樻
 
 Claude Code has documented local session transcripts under `~/.claude/projects/`; Claude's `/usage` screen also uses local history for approximate plan usage. For Antigravity, when no query command is configured, this tool treats local JSON/JSONL token logs as the source of truth.
-Claude Code 鍦?`~/.claude/projects/` 鐩綍涓嬪瓨鏈夋湰鍦颁細璇濊褰曪紱Claude 鐨勫懡浠よ `/usage` 鎸囦护涔熶細浣跨敤杩欎簺鏈湴鍘嗗彶璁板綍鏉ラ浼板椁愪娇鐢ㄦ儏鍐点€傚浜?Antigravity锛屽鏋滄湭閰嶇疆鏌ヨ鍛戒护锛岃宸ュ叿灏嗕互鏈湴鎵弿鍒扮殑 JSON/JSONL Token 鏃ュ織浣滀负鏁版嵁婧愩€?
+Claude Code 閸?`~/.claude/projects/` 閻╊喖缍嶆稉瀣摠閺堝婀伴崷棰佺窗鐠囨繆顔囪ぐ鏇幢Claude 閻ㄥ嫬鎳℃禒銈堫攽 `/usage` 閹稿洣鎶ゆ稊鐔剁窗娴ｈ法鏁ゆ潻娆庣昂閺堫剙婀撮崢鍡楀蕉鐠佹澘缍嶉弶銉╊暕娴兼澘顨滄鎰▏閻劍鍎忛崘鐐光偓鍌氼嚠娴?Antigravity閿涘苯顩ч弸婊勬弓闁板秶鐤嗛弻銉嚄閸涙垝鎶ら敍宀冾嚉瀹搞儱鍙跨亸鍡曚簰閺堫剙婀撮幍顐ｅ伎閸掓壆娈?JSON/JSONL Token 閺冦儱绻旀担婊€璐熼弫鐗堝祦濠ф劑鈧?
 For Codex / ChatGPT, the tool fetches real-time rolling usage directly from the cloud analytics page (`https://chatgpt.com/codex/cloud/settings/analytics#usage`) using an automated background query command that retrieves remaining limit percentages using the session token in your local `~/.codex/auth.json` config, bypassing local logs.
-瀵逛簬 Codex / ChatGPT锛岃宸ュ叿閫氳繃鑷姩鍖栫殑鍚庡彴鏌ヨ鍛戒护锛屽埄鐢ㄦ偍鏈湴 `~/.codex/auth.json` 閰嶇疆涓殑浼氳瘽 Token锛岀洿鎺ヤ粠浜戠鍒嗘瀽椤甸潰 (`https://chatgpt.com/codex/cloud/settings/analytics#usage`) 鑾峰彇瀹炴椂鐨勬粴鍔ㄩ搴﹀墿浣欑櫨鍒嗘瘮锛屼粠鑰岃烦杩囨湰鍦版棩蹇楄В鏋愩€?
+鐎甸€涚艾 Codex / ChatGPT閿涘矁顕氬銉ュ徔闁俺绻冮懛顏勫З閸栨牜娈戦崥搴″酱閺屻儴顕楅崨鎴掓姢閿涘苯鍩勯悽銊﹀亶閺堫剙婀?`~/.codex/auth.json` 闁板秶鐤嗘稉顓犳畱娴兼俺鐦?Token閿涘瞼娲块幒銉ょ矤娴滄垹顏崚鍡樼€芥い鐢告桨 (`https://chatgpt.com/codex/cloud/settings/analytics#usage`) 閼惧嘲褰囩€圭偞妞傞惃鍕泊閸斻劑顤傛惔锕€澧挎担娆戞閸掑棙鐦敍灞肩矤閼板矁鐑︽潻鍥ㄦ拱閸︾増妫╄箛妤勑掗弸鎰┾偓?
 For Claude Code, the tool fetches real-time rolling usage statistics (corresponding to the web-based usage settings page `https://claude.ai/new#settings/usage`) using the OAuth access token stored in your local `~/.claude/.credentials.json` to query the `https://api.anthropic.com/api/oauth/usage` endpoint, bypassing local logs.
-瀵逛簬 Claude Code锛岃宸ュ叿鍒╃敤鎮ㄦ湰鍦?`~/.claude/.credentials.json` 涓殑 OAuth 璁块棶 Token锛屽悜 `https://api.anthropic.com/api/oauth/usage` 鍙戣捣璇锋眰锛岃幏鍙栧疄鏃剁殑婊氬姩浣跨敤缁熻鏁版嵁锛堜笌缃戦〉鐗?`https://claude.ai/new#settings/usage` 鐨勯厤棰濋檺鍒朵竴鑷达級锛岃烦杩囨湰鍦版棩蹇楁枃浠舵壂鎻忋€?
+鐎甸€涚艾 Claude Code閿涘矁顕氬銉ュ徔閸掆晝鏁ら幃銊︽拱閸?`~/.claude/.credentials.json` 娑擃厾娈?OAuth 鐠佸潡妫?Token閿涘苯鎮?`https://api.anthropic.com/api/oauth/usage` 閸欐垼鎹ｇ拠閿嬬湴閿涘矁骞忛崣鏍х杽閺冨墎娈戝姘З娴ｈ法鏁ょ紒鐔活吀閺佺増宓侀敍鍫滅瑢缂冩垿銆夐悧?`https://claude.ai/new#settings/usage` 閻ㄥ嫰鍘ゆ０婵嬫閸掓湹绔撮懛杈剧礆閿涘矁鐑︽潻鍥ㄦ拱閸︾増妫╄箛妤佹瀮娴犺埖澹傞幓蹇嬧偓?
 For Antigravity, the tool fetches real-time rolling compute limits from the running Antigravity or Antigravity IDE local language server and currently reports the Gemini Models quota group only.
-瀵逛簬 Antigravity锛岃宸ュ叿浼氫粠姝ｅ湪杩愯鐨?Antigravity 鎴?Antigravity IDE 鏈湴 language server 鑾峰彇瀹炴椂婊氬姩棰濆害锛岀洰鍓嶅彧缁熻鍏朵腑鐨?Gemini Models 閰嶉缁勩€?
+鐎甸€涚艾 Antigravity閿涘矁顕氬銉ュ徔娴兼矮绮犲锝呮躬鏉╂劘顢戦惃?Antigravity 閹?Antigravity IDE 閺堫剙婀?language server 閼惧嘲褰囩€圭偞妞傚姘З妫版繂瀹抽敍宀€娲伴崜宥呭涧缂佺喕顓搁崗鏈佃厬閻?Gemini Models 闁板秹顤傜紒鍕┾偓?
 When Antigravity is not running, TokenMonitor uses the last visible Antigravity quota and bucket reset times from cache until the next live query succeeds. Cached quota percentages are not estimated upward over time.
-褰?Antigravity 鏈繍琛屾椂锛孴okenMonitor 浼氫娇鐢ㄧ紦瀛樹腑鐨勬渶鍚庝竴娆″彲瑙?Antigravity 棰濆害鍜屾《鎭㈠鏃堕棿锛岀洿鍒颁笅涓€娆″疄鏃舵煡璇㈡垚鍔熴€傜紦瀛橀搴︾櫨鍒嗘瘮涓嶄細闅忔椂闂村悜涓婁及绠椼€?
+瑜?Antigravity 閺堫亣绻嶇悰灞炬閿涘okenMonitor 娴兼矮濞囬悽銊х处鐎涙ü鑵戦惃鍕付閸氬簼绔村▎鈥冲讲鐟?Antigravity 妫版繂瀹抽崪灞俱€婇幁銏狀槻閺冨爼妫块敍宀€娲块崚棰佺瑓娑撯偓濞嗏€崇杽閺冭埖鐓＄拠銏″灇閸旂喆鈧倻绱︾€涙﹢顤傛惔锔炬閸掑棙鐦稉宥勭窗闂呭繑妞傞梻鏉戞倻娑撳﹣鍙婄粻妞尖偓?
+
 
 
