@@ -2,7 +2,6 @@
 *.tmp
 bin/*
 !bin/
-!bin/TokenMonitor.exe
 obj/
 .vs/
 /TokenMonitor.exe
