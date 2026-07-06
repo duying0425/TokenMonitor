@@ -1,4 +1,4 @@
-﻿# TokenMonitor
+# TokenMonitor
 
 Windows taskbar tray monitor for local AI coding-tool token usage.
 Windows 绯荤粺鎵樼洏涓殑鏈湴 AI 缂栫▼宸ュ叿 Token 浣跨敤閲忕洃瑙嗗櫒銆?
@@ -34,17 +34,31 @@ Double-click the tray icon or the status strip to open the dashboard. Right-clic
 鍙屽嚮鎵樼洏鍥炬爣鎴栫姸鎬佹潯鍙互鎵撳紑鎺у埗闈㈡澘锛圖ashboard锛夈€傚彸閿偣鍑诲畠浠彲浠ュ脊鍑鸿彍鍗曪細鎺у埗闈㈡澘銆佹墜鍔ㄥ埛鏂般€佽缃€佸垏鎹㈢姸鎬佹潯鏄鹃殣浠ュ強閫€鍑恒€?
 By default it refreshes every 1 minute.
 榛樿姣?1 鍒嗛挓鍒锋柊涓€娆°€?
-## Build / 鏋勫缓
+## Release and Build / 发布与构建
 
-Install `ps2exe`, then build the Windows tray executable from the repository root:
-瀹夎 `ps2exe` 鍚庯紝鍦ㄤ粨搴撴牴鐩綍鎵ц浠ヤ笅鍛戒护鏋勫缓 Windows 鎵樼洏绋嬪簭锛?
+The compilation of `TokenMonitor.exe` is automated on GitHub Actions using `ps2exe` on Windows runners. We do not track or build the executable locally.
+`TokenMonitor.exe` 的编译和发布过程已完全托管至 GitHub Actions（在 `windows-latest` 运行器上使用 `ps2exe` 编译），本地不再跟踪编译出的二进制文件。
+
+### How to trigger a new release / 如何触发新版本发布
+
+Run the release script locally to automatically increment the version, commit, tag, and trigger the GitHub Actions build workflow:
+在本地运行发布脚本，它将自动递增版本号、提交更改、创建 Git 标签并推送到 GitHub 触发自动构建工作流：
+
 ```powershell
-Install-Module ps2exe -Scope CurrentUser
-ps2exe .\src\TokenMonitor.ps1 .\bin\TokenMonitor.exe -STA -noConsole -title TokenMonitor -product TokenMonitor -version 1.4.3 -embedFiles @{'.\TokenUsage.psm1'='.\src\TokenUsage.psm1'}
+.\release.ps1
 ```
 
-The generated release executable is `bin\TokenMonitor.exe`. It embeds `src\TokenUsage.psm1` and extracts it as `TokenUsage.psm1` beside the executable on first run.
-鐢熸垚鐨?release 鎵ц绋嬪簭浣嶄簬 `bin\TokenMonitor.exe`銆傚畠浼氬祵鍏?`src\TokenUsage.psm1`锛岄娆¤繍琛屾椂浼氬湪 exe 鎵€鍦ㄧ洰褰曟梺閲婃斁涓?`TokenUsage.psm1`銆?
+Once triggered, GitHub Actions will:
+- Check out the codebase
+- Install the `ps2exe` tool
+- Compile `bin/TokenMonitor.exe` using `.\build.ps1`
+- Publish a new GitHub Release with the compiled binary attached as a release asset.
+
+触发后，GitHub Actions 会自动执行以下步骤：
+- 检出代码库
+- 安装 `ps2exe` 工具
+- 运行 `.\build.ps1` 编译出 `bin/TokenMonitor.exe`
+- 创建新的 GitHub Release，并将编译好的 `TokenMonitor.exe` 作为发布产物上传。
 ## Configure quotas / 閰嶇疆棰濆害
 
 Open Settings from the tray menu.
