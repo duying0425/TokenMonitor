@@ -1,0 +1,40 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up NuGet package provider
+      shell: powershell
+      run: |
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+
+    - name: Install ps2exe module
+      shell: powershell
+      run: |
+        Install-Module ps2exe -Scope CurrentUser -Force -SkipPublisherCheck
+
+    - name: Run Build Script
+      shell: powershell
+      run: |
+        .\build.ps1
+
+    - name: Create GitHub Release and Upload Asset
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      shell: powershell
+      run: |
+        $tag = $env:GITHUB_REF_NAME
+        gh release create $tag bin/TokenMonitor.exe --title "$tag" --notes "Automated release for $tag"
