@@ -171,18 +171,11 @@ catch {
     $script:UiScale = 1.0
 }
 
-# Sleek Modern Light Theme Color Palette
+# md2doc-style palette: native widgets on a soft gray background with state-tinted rows
 $script:Colors = @{
-    Background       = [System.Drawing.ColorTranslator]::FromHtml('#f8f9fa') # Soft white/gray background
-    PanelBackground  = [System.Drawing.ColorTranslator]::FromHtml('#ffffff') # Card/Panel background
-    HeaderBackground = [System.Drawing.ColorTranslator]::FromHtml('#e9ecef') # Header gray
-    Text             = [System.Drawing.ColorTranslator]::FromHtml('#212529') # Dark text
-    TextDim          = [System.Drawing.ColorTranslator]::FromHtml('#6c757d') # Muted text
-    Accent           = [System.Drawing.ColorTranslator]::FromHtml('#2563EB') # Tailwind Blue-600
-    AccentHover      = [System.Drawing.ColorTranslator]::FromHtml('#3B82F6') # Tailwind Blue-500
-    Border           = [System.Drawing.ColorTranslator]::FromHtml('#dee2e6') # Light border
-    GridLine         = [System.Drawing.ColorTranslator]::FromHtml('#e9ecef') # Soft grid line
-    RowHover         = [System.Drawing.ColorTranslator]::FromHtml('#e9ecef') # Soft selection
+    Background = [System.Drawing.ColorTranslator]::FromHtml('#f8f9fa')
+    Text       = [System.Drawing.ColorTranslator]::FromHtml('#212529')
+    TextDim    = [System.Drawing.ColorTranslator]::FromHtml('#666666')
 }
 
 # Resolve and Load Icon
@@ -212,9 +205,8 @@ function Style-ModernForm {
     )
 
     $Form.BackColor = $script:Colors.Background
-    $Form.ForeColor = $script:Colors.Text
     $Form.Icon = $script:AppIcon
-    $Form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $Form.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 }
 
 function Style-FlatButton {
@@ -222,21 +214,7 @@ function Style-FlatButton {
         [System.Windows.Forms.Button]$Button,
         [switch]$IsPrimary
     )
-
-    $Button.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $Button.FlatAppearance.BorderSize = 0
-    $Button.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
-    $Button.ForeColor = [System.Drawing.Color]::White
-
-    if ($IsPrimary) {
-        $Button.BackColor = $script:Colors.Accent
-        $Button.Add_MouseEnter({ $this.BackColor = $script:Colors.AccentHover })
-        $Button.Add_MouseLeave({ $this.BackColor = $script:Colors.Accent })
-    } else {
-        $Button.BackColor = $script:Colors.Border
-        $Button.Add_MouseEnter({ $this.BackColor = $script:Colors.RowHover })
-        $Button.Add_MouseLeave({ $this.BackColor = $script:Colors.Border })
-    }
+    # Native Windows buttons (standard visual styles)
 }
 
 function Style-DataGridView {
@@ -244,27 +222,18 @@ function Style-DataGridView {
         [System.Windows.Forms.DataGridView]$Grid
     )
 
-    $Grid.BackgroundColor = $script:Colors.Background
-    $Grid.ForeColor = $script:Colors.Text
-    $Grid.GridColor = $script:Colors.GridLine
+    # Native header rendering, white background, comfortable row height
+    $Grid.EnableHeadersVisualStyles = $true
+    $Grid.BackgroundColor = [System.Drawing.Color]::White
     $Grid.BorderStyle = [System.Windows.Forms.BorderStyle]::None
     $Grid.CellBorderStyle = [System.Windows.Forms.DataGridViewCellBorderStyle]::SingleHorizontal
-    $Grid.ColumnHeadersBorderStyle = [System.Windows.Forms.DataGridViewHeaderBorderStyle]::None
-    $Grid.EnableHeadersVisualStyles = $false
+    $Grid.GridColor = [System.Drawing.ColorTranslator]::FromHtml('#e9ecef')
+    $Grid.ColumnHeadersHeight = Scale-UiValue 28
+    $Grid.RowTemplate.Height = Scale-UiValue 28
 
-    $Grid.ColumnHeadersDefaultCellStyle.BackColor = $script:Colors.HeaderBackground
-    $Grid.ColumnHeadersDefaultCellStyle.ForeColor = $script:Colors.TextDim
-    $Grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = $script:Colors.HeaderBackground
-    $Grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = $script:Colors.TextDim
-    $Grid.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font('Segoe UI', 9.5, [System.Drawing.FontStyle]::Bold)
-    $Grid.ColumnHeadersHeight = Scale-UiValue 32
-
-    $Grid.DefaultCellStyle.BackColor = $script:Colors.Background
-    $Grid.DefaultCellStyle.ForeColor = $script:Colors.Text
-    $Grid.DefaultCellStyle.SelectionBackColor = $script:Colors.RowHover
-    $Grid.DefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
-    $Grid.DefaultCellStyle.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
-    $Grid.RowTemplate.Height = Scale-UiValue 30
+    # Disable selection highlight (grid is read-only / for display only)
+    $Grid.DefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::White
+    $Grid.DefaultCellStyle.SelectionForeColor = $script:Colors.Text
 }
 
 function Scale-UiValue {
@@ -388,12 +357,25 @@ function Get-HealthStateColor {
     param($HealthState)
 
     switch ([string]$HealthState) {
-        'empty' { return [System.Drawing.ColorTranslator]::FromHtml('#dc2626') } # Red-600
-        'low' { return [System.Drawing.ColorTranslator]::FromHtml('#ea580c') }   # Orange-600
-        'medium' { return [System.Drawing.ColorTranslator]::FromHtml('#ca8a04') }# Yellow-600
-        'good' { return [System.Drawing.ColorTranslator]::FromHtml('#16a34a') }  # Green-600
-        'disabled' { return [System.Drawing.ColorTranslator]::FromHtml('#94a3b8') }# Slate-400
-        default { return [System.Drawing.ColorTranslator]::FromHtml('#475569') } # Slate-600
+        'empty' { return [System.Drawing.ColorTranslator]::FromHtml('#dc3545') }  # Red
+        'low' { return [System.Drawing.ColorTranslator]::FromHtml('#ea580c') }    # Orange
+        'medium' { return [System.Drawing.ColorTranslator]::FromHtml('#ca8a04') } # Yellow
+        'good' { return [System.Drawing.ColorTranslator]::FromHtml('#16a34a') }   # Green
+        'disabled' { return [System.Drawing.ColorTranslator]::FromHtml('#6c757d') }# Gray
+        default { return [System.Drawing.ColorTranslator]::FromHtml('#475569') }  # Slate
+    }
+}
+
+function Get-HealthStateBackColor {
+    param($HealthState)
+
+    switch ([string]$HealthState) {
+        'empty' { return [System.Drawing.ColorTranslator]::FromHtml('#ffebee') }  # Light red
+        'low' { return [System.Drawing.ColorTranslator]::FromHtml('#fff3e0') }    # Light orange
+        'medium' { return [System.Drawing.ColorTranslator]::FromHtml('#fef3c7') } # Light yellow
+        'good' { return [System.Drawing.ColorTranslator]::FromHtml('#e8f5e9') }   # Light green
+        'disabled' { return [System.Drawing.ColorTranslator]::FromHtml('#f8f9fa') }# Light gray
+        default { return [System.Drawing.ColorTranslator]::FromHtml('#f8f9fa') }  # Soft gray
     }
 }
 
@@ -498,6 +480,9 @@ function Update-DashboardGrid {
 
         $row = $script:Grid.Rows[$script:Grid.Rows.Count - 1]
         $row.DefaultCellStyle.ForeColor = Get-HealthStateColor -HealthState $provider.HealthState
+        $row.DefaultCellStyle.BackColor = Get-HealthStateBackColor -HealthState $provider.HealthState
+        $row.DefaultCellStyle.SelectionBackColor = Get-HealthStateBackColor -HealthState $provider.HealthState
+        $row.DefaultCellStyle.SelectionForeColor = Get-HealthStateColor -HealthState $provider.HealthState
     }
 
     if ($null -ne $script:StatusLabel) {
@@ -543,7 +528,6 @@ function Show-Dashboard {
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Dock = 'Top'
     $panel.Height = Scale-UiValue 44
-    $panel.BackColor = $script:Colors.PanelBackground
 
     $refreshButton = New-Object System.Windows.Forms.Button
     $refreshButton.Text = 'Refresh'
@@ -592,6 +576,7 @@ function Show-Dashboard {
     $grid.SelectionMode = 'FullRowSelect'
     $grid.MultiSelect = $false
     $grid.AutoSizeColumnsMode = 'Fill'
+    $grid.AllowUserToResizeRows = $false
     Style-DataGridView -Grid $grid
 
     foreach ($column in @(
@@ -669,14 +654,12 @@ function Show-Settings {
     $top = New-Object System.Windows.Forms.Panel
     $top.Dock = 'Top'
     $top.Height = Scale-UiValue 42
-    $top.BackColor = $script:Colors.PanelBackground
 
     $refreshLabel = New-Object System.Windows.Forms.Label
     $refreshLabel.Text = 'Refresh seconds'
     $refreshLabel.AutoSize = $true
     $refreshLabel.Left = Scale-UiValue 12
     $refreshLabel.Top = Scale-UiValue 13
-    $refreshLabel.ForeColor = $script:Colors.Text
     $top.Controls.Add($refreshLabel)
 
     $refreshInput = New-Object System.Windows.Forms.NumericUpDown
@@ -686,8 +669,6 @@ function Show-Settings {
     $refreshInput.Left = Scale-UiValue 118
     $refreshInput.Top = Scale-UiValue 9
     $refreshInput.Width = Scale-UiValue 80
-    $refreshInput.BackColor = $script:Colors.Background
-    $refreshInput.ForeColor = $script:Colors.Text
     $top.Controls.Add($refreshInput)
 
     $maxFileLabel = New-Object System.Windows.Forms.Label
@@ -695,7 +676,6 @@ function Show-Settings {
     $maxFileLabel.AutoSize = $true
     $maxFileLabel.Left = Scale-UiValue 218
     $maxFileLabel.Top = Scale-UiValue 13
-    $maxFileLabel.ForeColor = $script:Colors.Text
     $top.Controls.Add($maxFileLabel)
 
     $maxFileInput = New-Object System.Windows.Forms.NumericUpDown
@@ -705,8 +685,6 @@ function Show-Settings {
     $maxFileInput.Left = Scale-UiValue 298
     $maxFileInput.Top = Scale-UiValue 9
     $maxFileInput.Width = Scale-UiValue 70
-    $maxFileInput.BackColor = $script:Colors.Background
-    $maxFileInput.ForeColor = $script:Colors.Text
     $top.Controls.Add($maxFileInput)
 
     $hint = New-Object System.Windows.Forms.Label
@@ -723,6 +701,7 @@ function Show-Settings {
     $grid.AllowUserToDeleteRows = $false
     $grid.RowHeadersVisible = $false
     $grid.AutoSizeColumnsMode = 'Fill'
+    $grid.AllowUserToResizeRows = $false
     Style-DataGridView -Grid $grid
 
     $enabledCol = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
@@ -766,7 +745,6 @@ function Show-Settings {
     $bottom = New-Object System.Windows.Forms.Panel
     $bottom.Dock = 'Bottom'
     $bottom.Height = Scale-UiValue 48
-    $bottom.BackColor = $script:Colors.PanelBackground
 
     $saveButton = New-Object System.Windows.Forms.Button
     $saveButton.Text = 'Save'
