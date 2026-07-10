@@ -523,26 +523,12 @@ function Refresh-Usage {
     }
 }
 
-function Request-UsageRefresh {
-    if ($null -ne $script:StatusLabel) {
-        $script:StatusLabel.Text = 'Refreshing...'
-    }
-
-    if ($null -ne $script:DashboardForm -and -not $script:DashboardForm.IsDisposed) {
-        [void]$script:DashboardForm.BeginInvoke([System.Action]{ Refresh-Usage })
-        return
-    }
-
-    Refresh-Usage
-}
-
 function Show-Dashboard {
     if ($null -ne $script:DashboardForm -and -not $script:DashboardForm.IsDisposed) {
         $script:DashboardForm.Show()
         $script:DashboardForm.WindowState = [System.Windows.Forms.FormWindowState]::Normal
         $script:DashboardForm.Activate()
         $script:DashboardForm.Refresh()
-        Request-UsageRefresh
         return
     }
 
@@ -639,7 +625,7 @@ function Show-Dashboard {
     $form.Show()
     $form.Activate()
     $form.Refresh()
-    Request-UsageRefresh
+    Update-DashboardGrid
 }
 
 function Parse-LongCell {
