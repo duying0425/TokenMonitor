@@ -173,3 +173,4 @@ For Antigravity, the tool fetches real-time rolling compute limits from the runn
 When Antigravity is not running, TokenMonitor uses the last visible Antigravity quota and bucket reset times from cache until the next live query succeeds. Cached quota percentages are not estimated upward over time.
 当 Antigravity 未运行时，TokenMonitor 会使用缓存中的最后一次可见 Antigravity 额度和桶恢复时间，直到下一次实时查询成功。缓存额度百分比不会随时间向上估算。
 
+
