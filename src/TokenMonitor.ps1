@@ -315,6 +315,33 @@ function Format-DateCell {
     return ([DateTime]$Value).ToString('yyyy-MM-dd HH:mm')
 }
 
+function Format-GuiResetHours {
+    param(
+        $Value,
+        $Snapshot,
+        [switch]$IsWeekly
+    )
+
+    $formatted = Format-ResetHours $Value
+    if ($null -eq $Value -or $Value -le 0.05) {
+        return $formatted
+    }
+
+    $baseTime = [DateTime]::Now
+    if ($null -ne $Snapshot -and $null -ne $Snapshot.GeneratedAtLocal) {
+        $baseTime = $Snapshot.GeneratedAtLocal
+    }
+
+    $estTime = $baseTime.AddHours([double]$Value)
+    $estString = if ($IsWeekly) {
+        $estTime.ToString('MM-dd HH:mm')
+    } else {
+        $estTime.ToString('HH:mm')
+    }
+    return "$formatted ($estString)"
+}
+
+
 function Get-StatusStripText {
     param($Snapshot)
 
@@ -471,9 +498,9 @@ function Update-DashboardGrid {
             $provider.Name,
             (Format-ProviderHealthCell -Provider $provider),
             (Format-Percent $provider.FiveHourRemainingPercent),
-            (Format-ResetHours $provider.FiveHourResetHours),
+            (Format-GuiResetHours -Value $provider.FiveHourResetHours -Snapshot $script:Snapshot),
             (Format-Percent $provider.WeeklyRemainingPercent),
-            (Format-ResetHours $provider.WeeklyResetHours),
+            (Format-GuiResetHours -Value $provider.WeeklyResetHours -Snapshot $script:Snapshot -IsWeekly),
             (Format-DateCell $provider.LastEventLocal),
             $provider.Status
         )
@@ -520,9 +547,9 @@ function Show-Dashboard {
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'TokenMonitor'
     $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
-    $form.Size = New-UiSize 900 420
+    $form.Size = New-UiSize 1150 420
     $form.StartPosition = 'CenterScreen'
-    $form.MinimumSize = New-UiSize 760 320
+    $form.MinimumSize = New-UiSize 950 320
     Style-ModernForm -Form $form
 
     $panel = New-Object System.Windows.Forms.Panel
@@ -580,18 +607,21 @@ function Show-Dashboard {
     Style-DataGridView -Grid $grid
 
     foreach ($column in @(
-        @('Provider', 'Provider'),
-        @('Health', 'Health'),
-        @('FiveHour', '5h quota'),
-        @('FiveHourReset', '5h reset'),
-        @('Weekly', '7d quota'),
-        @('WeeklyReset', '7d reset'),
-        @('LastEvent', 'Last update'),
-        @('Status', 'Status')
+        @('Provider', 'Provider', 'AllCells', 'MiddleLeft'),
+        @('Health', 'Health', 'AllCells', 'MiddleCenter'),
+        @('FiveHour', '5h quota', 'AllCells', 'MiddleRight'),
+        @('FiveHourReset', '5h reset', 'AllCells', 'MiddleCenter'),
+        @('Weekly', '7d quota', 'AllCells', 'MiddleRight'),
+        @('WeeklyReset', '7d reset', 'AllCells', 'MiddleCenter'),
+        @('LastEvent', 'Last update', 'AllCells', 'MiddleCenter'),
+        @('Status', 'Status', 'Fill', 'MiddleLeft')
     )) {
         $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
         $col.Name = $column[0]
         $col.HeaderText = $column[1]
+        $col.AutoSizeMode = $column[2]
+        $col.DefaultCellStyle.Alignment = $column[3]
+        $col.HeaderCell.Style.Alignment = $column[3]
         [void]$grid.Columns.Add($col)
     }
 
