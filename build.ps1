@@ -78,7 +78,7 @@ $compileArgs = @{
     noConsole = $true
     title = 'TokenMonitor'
     product = 'TokenMonitor'
-    version = '1.4.9'
+    version = '1.4.10'
 }
 
 if ($null -ne $iconPath -and (Test-Path -LiteralPath $iconPath)) {
@@ -95,6 +95,7 @@ if (Test-Path -LiteralPath $tempMergedPath) {
 }
 
 Write-Host "Successfully compiled and updated TokenMonitor.exe!" -ForegroundColor Green
+
 
 
 
