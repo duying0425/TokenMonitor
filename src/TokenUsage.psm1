@@ -213,6 +213,71 @@ catch {
 '@
 }
 
+function Get-DefaultCodexCommand {
+    return @'
+# TokenMonitorCodexQuotaCommandVersion=2
+$authPath = "$env:USERPROFILE\.codex\auth.json"
+if (-not (Test-Path -LiteralPath $authPath)) {
+    [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress
+    exit
+}
+try {
+    $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json
+    $token = $auth.tokens.access_token
+    if (-not $token) {
+        [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress
+        exit
+    }
+    $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }
+    $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop
+    if ($resp) {
+        $p = $resp.rate_limit.primary_window
+        $s = $resp.rate_limit.secondary_window
+        
+        $fiveHourUsedPercent = $null
+        $fiveHourResetAt = $null
+        $weeklyUsedPercent = $null
+        $weeklyResetAt = $null
+        
+        if ($null -ne $p) {
+            $used = $p.used_percent
+            $reset = $p.resets_at; if (-not $reset) { $reset = $p.reset_at }; if (-not $reset) { $reset = $p.resetsAt }
+            if ($null -ne $p.limit_window_seconds -and $p.limit_window_seconds -gt 86400) {
+                $weeklyUsedPercent = $used
+                $weeklyResetAt = $reset
+            } else {
+                $fiveHourUsedPercent = $used
+                $fiveHourResetAt = $reset
+            }
+        }
+        
+        if ($null -ne $s) {
+            $used = $s.used_percent
+            $reset = $s.resets_at; if (-not $reset) { $reset = $s.reset_at }; if (-not $reset) { $reset = $s.resetsAt }
+            if ($null -ne $s.limit_window_seconds -and $s.limit_window_seconds -le 86400) {
+                $fiveHourUsedPercent = $used
+                $fiveHourResetAt = $reset
+            } else {
+                $weeklyUsedPercent = $used
+                $weeklyResetAt = $reset
+            }
+        }
+        
+        [PSCustomObject]@{
+            fiveHourUsedPercent = $fiveHourUsedPercent
+            weeklyUsedPercent = $weeklyUsedPercent
+            fiveHourResetAt = $fiveHourResetAt
+            weeklyResetAt = $weeklyResetAt
+        } | ConvertTo-Json -Compress
+    } else {
+        [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress
+    }
+} catch {
+    [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+'@
+}
+
 function Get-DefaultClaudeCommand {
     return @'
 # TokenMonitorClaudeQuotaCommandVersion=5
@@ -644,7 +709,7 @@ function Save-ClaudeCookieHelper {
 
 function New-DefaultTokenSettings {
     $defaultGeminiCommand = Get-DefaultAntigravityCommand
-    $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultCodexCommand = Get-DefaultCodexCommand
     $defaultClaudeCommand = Get-DefaultClaudeCommand
     Save-ClaudeCookieHelper
 
@@ -706,7 +771,7 @@ function Read-TokenMonitorSettings {
     Save-ClaudeCookieHelper
 
     $defaultGeminiCommand = Get-DefaultAntigravityCommand
-    $defaultCodexCommand = '$authPath = "$env:USERPROFILE\.codex\auth.json"; if (-not (Test-Path -LiteralPath $authPath)) { [PSCustomObject]@{ Error = "No auth.json" } | ConvertTo-Json -Compress; exit }; try { $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json; $token = $auth.tokens.access_token; if (-not $token) { [PSCustomObject]@{ Error = "Not logged in" } | ConvertTo-Json -Compress; exit }; $headers = @{ Authorization = "Bearer $token"; "User-Agent" = "Mozilla/5.0" }; $resp = Invoke-RestMethod -Uri "https://chatgpt.com/backend-api/wham/usage" -Headers $headers -ErrorAction Stop; if ($resp) { $p = $resp.rate_limit.primary_window; $s = $resp.rate_limit.secondary_window; $pReset = $p.resets_at; if (-not $pReset) { $pReset = $p.reset_at }; if (-not $pReset) { $pReset = $p.resetsAt }; $sReset = $s.resets_at; if (-not $sReset) { $sReset = $s.reset_at }; if (-not $sReset) { $sReset = $s.resetsAt }; [PSCustomObject]@{ fiveHourUsedPercent = $p.used_percent; weeklyUsedPercent = $s.used_percent; fiveHourResetAt = $pReset; weeklyResetAt = $sReset } | ConvertTo-Json -Compress } else { [PSCustomObject]@{ Error = "Empty API response" } | ConvertTo-Json -Compress } } catch { [PSCustomObject]@{ Error = $_.Exception.Message } | ConvertTo-Json -Compress }'
+    $defaultCodexCommand = Get-DefaultCodexCommand
     $defaultClaudeCommand = Get-DefaultClaudeCommand
 
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -777,18 +842,14 @@ function Read-TokenMonitorSettings {
                 $provider.Command = $defaultGeminiCommand
                 $migrated = $true
             }
-            elseif ($provider.Id -eq 'codex' -and [string]::IsNullOrWhiteSpace($provider.Command)) {
+            elseif ($provider.Id -eq 'codex' -and
+                ([string]::IsNullOrWhiteSpace($provider.Command) -or
+                 ([string]$provider.Command).IndexOf('TokenMonitorCodexQuotaCommandVersion=2', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
                 $provider.Command = $defaultCodexCommand
                 $migrated = $true
             }
             elseif ($provider.Id -eq 'claude' -and [string]::IsNullOrWhiteSpace($provider.Command)) {
                 $provider.Command = $defaultClaudeCommand
-                $migrated = $true
-            }
-            elseif ($provider.Id -eq 'codex' -and
-                ([string]$provider.Command).IndexOf('https://chatgpt.com/backend-api/wham/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-                ([string]$provider.Command).IndexOf('fiveHourResetAt', [StringComparison]::OrdinalIgnoreCase) -lt 0) {
-                $provider.Command = $defaultCodexCommand
                 $migrated = $true
             }
             elseif ($provider.Id -eq 'claude' -and
@@ -1634,11 +1695,23 @@ function Get-ProviderTokenHealth {
         $percent = $five
         $window = '5h'
     }
-    else {
-        $state = 'unknown'
+    elseif ($null -ne $week -and $week -le 50) {
+        $state = 'medium'
         $text = New-TokenHealthText -State $state
         $percent = $week
         $window = '7d'
+    }
+    elseif ($null -ne $week) {
+        $state = 'good'
+        $text = New-TokenHealthText -State $state
+        $percent = $week
+        $window = '7d'
+    }
+    else {
+        $state = 'unknown'
+        $text = New-TokenHealthText -State $state
+        $percent = $null
+        $window = $null
     }
 
     if ($state -eq 'unknown' -and -not (Test-TokenProviderStatusOk -Status $Status)) {

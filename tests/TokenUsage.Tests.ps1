@@ -238,6 +238,22 @@ InModuleScope TokenUsage {
             $health = Get-ProviderTokenHealth -Enabled $true -Status "OK" -FiveHourRemainingPercent 90.0 -WeeklyRemainingPercent 95.0
             $health.State | Should Be "good"
         }
+        It "Calculates health when fiveHour limit is null" {
+            # Good weekly health when fiveHour is null
+            $health = Get-ProviderTokenHealth -Enabled $true -Status "OK" -FiveHourRemainingPercent $null -WeeklyRemainingPercent 95.0
+            $health.State | Should Be "good"
+            $health.Window | Should Be "7d"
+
+            # Medium weekly health when fiveHour is null
+            $health = Get-ProviderTokenHealth -Enabled $true -Status "OK" -FiveHourRemainingPercent $null -WeeklyRemainingPercent 35.0
+            $health.State | Should Be "medium"
+            $health.Window | Should Be "7d"
+
+            # Low weekly health when fiveHour is null
+            $health = Get-ProviderTokenHealth -Enabled $true -Status "OK" -FiveHourRemainingPercent $null -WeeklyRemainingPercent 8.0
+            $health.State | Should Be "low"
+            $health.Window | Should Be "7d"
+        }
         It "Tests provider status OK helper" {
             Test-TokenProviderStatusOk -Status "OK" | Should Be $true
             Test-TokenProviderStatusOk -Status "Command OK" | Should Be $true
