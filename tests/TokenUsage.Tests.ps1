@@ -307,9 +307,13 @@ InModuleScope TokenUsage {
             Format-ResetHours -Value 2.5 | Should Be "2.5h"
         }
         It "Formats tooltip percentages" {
-            Format-TooltipPercentNumber -Value $null | Should Be "00"
+            Format-TooltipPercentNumber -Value $null | Should Be "--"
             Format-TooltipPercentNumber -Value 85.4 | Should Be "85"
             Format-TooltipPercentNumber -Value 100 | Should Be "99"
+            
+            # Format-TooltipTimeNumber
+            Format-TooltipTimeNumber -Value $null | Should Be "--"
+            Format-TooltipTimeNumber -Value 5.2 | Should Be "5"
         }
     }
 

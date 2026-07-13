@@ -2327,7 +2327,7 @@ function Format-TooltipPercentNumber {
     param($Value)
 
     if ($null -eq $Value) {
-        return '00'
+        return '--'
     }
     $number = [Math]::Max(0, [Math]::Min(100, [int][Math]::Round([double]$Value)))
     if ($number -eq 100) {
@@ -2343,7 +2343,7 @@ function Format-TooltipTimeNumber {
     )
 
     if ($null -eq $Value) {
-        return '00'
+        return '--'
     }
 
     $number = [double]$Value
