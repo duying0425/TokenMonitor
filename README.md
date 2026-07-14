@@ -1,4 +1,4 @@
-﻿# TokenMonitor
+# TokenMonitor
 
 Windows taskbar tray monitor for local AI coding-tool token usage.
 Windows 系统托盘中的本地 AI 编程工具 Token 使用量监视器。
@@ -172,6 +172,43 @@ For Antigravity, the tool fetches real-time rolling compute limits from the runn
 
 When Antigravity is not running, TokenMonitor uses the last visible Antigravity quota and bucket reset times from cache until the next live query succeeds. Cached quota percentages are not estimated upward over time.
 当 Antigravity 未运行时，TokenMonitor 会使用缓存中的最后一次可见 Antigravity 额度和桶恢复时间，直到下一次实时查询成功。缓存额度百分比不会随时间向上估算。
+
+## Tests / 测试
+
+The project ships a Pester test suite that covers path expansion, date/time conversion, JSON log parsing, health calculations, window aggregation, formatters, and settings save/read regression cases.
+项目内置 Pester 测试套件，覆盖路径展开、日期时间转换、JSON 日志解析、健康度计算、窗口聚合、格式化器以及设置保存/读取回归用例。
+
+### Prerequisites / 前置条件
+
+Pester v3.4.0 is required (the version shipped with Windows PowerShell 5.1).
+需要 Pester v3.4.0（Windows PowerShell 5.1 自带版本）。
+
+```powershell
+Get-Module -ListAvailable Pester | Select-Object Name, Version
+```
+
+If missing, install it:
+如果未安装，可执行：
+
+```powershell
+Install-Module -Name Pester -MinimumVersion 3.4.0 -MaximumVersion 3.4.0 -Scope CurrentUser -Force
+```
+
+### Run tests / 运行测试
+
+```powershell
+Invoke-Pester -Path .\tests\TokenUsage.Tests.ps1 -PassThru | Select-Object TotalCount, PassedCount, FailedCount
+```
+
+All 48 tests should pass. The suite includes regression cases for:
+全部 48 个测试应通过。该套件包含以下回归用例：
+
+- `Save-TokenMonitorSettings` / `Save-TokenMonitorQuotaCache` produce no stray `NULL` output to the pipeline.
+  `Save-TokenMonitorSettings` / `Save-TokenMonitorQuotaCache` 不会向管道泄漏 `NULL` 输出。
+- `Read-TokenMonitorSettings` returns a single settings object (not an array with a leading `NULL`).
+  `Read-TokenMonitorSettings` 返回单个设置对象（而不是带有前导 `NULL` 的数组）。
+- `Read-TokenMonitorSettings` does not trigger unnecessary migrations on repeated reads of an already-migrated file.
+  `Read-TokenMonitorSettings` 对已迁移的文件重复读取时不会触发不必要的迁移。
 
 
 

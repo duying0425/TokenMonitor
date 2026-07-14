@@ -329,8 +329,10 @@ InModuleScope TokenUsage {
             $tempFile = [System.IO.Path]::GetTempFileName()
             try {
                 $settings = New-DefaultTokenSettings
-                $settings.RefreshSeconds = 120
-                
+                # New-DefaultTokenSettings returns an OrderedDictionary, so use indexer
+                # instead of dot notation to set values.
+                $settings['RefreshSeconds'] = 120
+
                 Save-TokenMonitorSettings -Settings $settings -Path $tempFile
                 
                 $loaded = Read-TokenMonitorSettings -Path $tempFile
@@ -349,6 +351,73 @@ InModuleScope TokenUsage {
             Set-TokenMonitorCacheProvider -Cache $cache -ProviderId "antigravity" -Value "custom"
             $val = Get-TokenMonitorCacheProvider -Cache $cache -ProviderId "antigravity"
             $val | Should Be "custom"
+        }
+    }
+
+    Describe "TokenUsage Settings Save/Read Regression" {
+        It "Save-TokenMonitorSettings produces no stray output (no NULL)" {
+            $tempFile = [System.IO.Path]::GetTempFileName()
+            try {
+                $settings = New-DefaultTokenSettings
+                $settings['RefreshSeconds'] = 120
+                $output = @(Save-TokenMonitorSettings -Settings $settings -Path $tempFile)
+                $output.Count | Should Be 0
+            }
+            finally {
+                if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force }
+            }
+        }
+
+        It "Read-TokenMonitorSettings returns a single settings object (no NULL array element)" {
+            $tempFile = [System.IO.Path]::GetTempFileName()
+            try {
+                $settings = New-DefaultTokenSettings
+                $settings['RefreshSeconds'] = 90
+                Save-TokenMonitorSettings -Settings $settings -Path $tempFile
+
+                $output = @(Read-TokenMonitorSettings -Path $tempFile)
+                $output.Count | Should Be 1
+                $output[0] | Should Not Be $null
+                $output[0].RefreshSeconds | Should Be 90
+            }
+            finally {
+                if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force }
+            }
+        }
+
+        It "Read-TokenMonitorSettings does not migrate on second read (stable file)" {
+            $tempFile = [System.IO.Path]::GetTempFileName()
+            try {
+                $settings = New-DefaultTokenSettings
+                $settings['RefreshSeconds'] = 120
+                Save-TokenMonitorSettings -Settings $settings -Path $tempFile
+
+                # First read may migrate; capture file hash after it
+                $null = Read-TokenMonitorSettings -Path $tempFile
+                $hashAfterFirst = (Get-FileHash -LiteralPath $tempFile -Algorithm SHA256).Hash
+
+                # Second read should NOT modify the file (no migration triggers)
+                $null = Read-TokenMonitorSettings -Path $tempFile
+                $hashAfterSecond = (Get-FileHash -LiteralPath $tempFile -Algorithm SHA256).Hash
+
+                $hashAfterFirst | Should Be $hashAfterSecond
+            }
+            finally {
+                if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force }
+            }
+        }
+
+        It "Save-TokenMonitorQuotaCache produces no stray output" {
+            $tempFile = [System.IO.Path]::GetTempFileName()
+            try {
+                Mock Get-TokenMonitorQuotaCachePath { $tempFile }
+                $cache = [pscustomobject]@{ antigravity = "cached-value" }
+                $output = @(Save-TokenMonitorQuotaCache -Cache $cache)
+                $output.Count | Should Be 0
+            }
+            finally {
+                if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force }
+            }
         }
     }
 }

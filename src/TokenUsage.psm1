@@ -703,7 +703,7 @@ function Save-ClaudeCookieHelper {
         if ($existing -eq $versionLine) { $needsSave = $false }
     }
     if ($needsSave) {
-        $csCode | Set-Content -LiteralPath $helperPath -Encoding UTF8
+        $csCode | Set-Content -LiteralPath $helperPath -Encoding UTF8 | Out-Null
     }
 }
 
@@ -762,7 +762,7 @@ function Save-TokenMonitorSettings {
     }
 
     $json = $Settings | ConvertTo-Json -Depth 12
-    Set-Content -LiteralPath $Path -Value $json -Encoding UTF8
+    Set-Content -LiteralPath $Path -Value $json -Encoding UTF8 | Out-Null
 }
 
 function Read-TokenMonitorSettings {
@@ -855,9 +855,6 @@ function Read-TokenMonitorSettings {
             elseif ($provider.Id -eq 'claude' -and
                 ([string]$provider.Command).IndexOf('https://api.anthropic.com/api/oauth/usage', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
                 (([string]$provider.Command).IndexOf('fiveHourResetAt', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
-                ([string]$provider.Command).IndexOf('https://platform.claude.com/v1/oauth/token', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
-                ([string]$provider.Command).IndexOf('Set-ClaudeOauthProperty', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
-                ([string]$provider.Command).IndexOf('refreshRateLimitedUntil', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
                 ([string]$provider.Command).IndexOf('TokenMonitorClaudeQuotaCommandVersion=5', [StringComparison]::OrdinalIgnoreCase) -lt 0)) {
                 $provider.Command = $defaultClaudeCommand
                 $migrated = $true
@@ -1456,7 +1453,7 @@ function Save-TokenMonitorQuotaCache {
     }
 
     $json = $Cache | ConvertTo-Json -Depth 8
-    Set-Content -LiteralPath $path -Value $json -Encoding UTF8
+    Set-Content -LiteralPath $path -Value $json -Encoding UTF8 | Out-Null
 }
 
 function Get-TokenMonitorCacheProvider {
