@@ -229,6 +229,7 @@ function Style-DataGridView {
     $Grid.CellBorderStyle = [System.Windows.Forms.DataGridViewCellBorderStyle]::SingleHorizontal
     $Grid.GridColor = [System.Drawing.ColorTranslator]::FromHtml('#e9ecef')
     $Grid.ColumnHeadersHeight = Scale-UiValue 28
+    $Grid.ColumnHeadersDefaultCellStyle.Alignment = 'MiddleCenter'
     $Grid.RowTemplate.Height = Scale-UiValue 28
 
     # Disable selection highlight (grid is read-only / for display only)
@@ -622,7 +623,7 @@ function Show-Dashboard {
         $col.HeaderText = $column[1]
         $col.AutoSizeMode = $column[2]
         $col.DefaultCellStyle.Alignment = $column[3]
-        $col.HeaderCell.Style.Alignment = $column[3]
+        $col.HeaderCell.Style.Alignment = 'MiddleCenter'
         [void]$grid.Columns.Add($col)
     }
 
