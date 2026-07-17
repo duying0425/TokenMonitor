@@ -333,12 +333,15 @@ function Format-GuiResetHours {
     }
 
     $estTime = $baseTime.AddHours([double]$Value)
-    $estString = if ($IsWeekly) {
-        $estTime.ToString('MM-dd HH:mm')
+    if ($IsWeekly) {
+        $days = [int][Math]::Floor([double]$Value / 24)
+        $hours = [double]$Value % 24
+        $estString = $estTime.ToString('MM-dd HH:mm')
+        return ('{0}d {1:00.0}h ({2})' -f $days, $hours, $estString)
     } else {
-        $estTime.ToString('HH:mm')
+        $estString = $estTime.ToString('HH:mm')
+        return "$formatted ($estString)"
     }
-    return "$formatted ($estString)"
 }
 
 
@@ -496,7 +499,6 @@ function Update-DashboardGrid {
     foreach ($provider in @($script:Snapshot.Providers)) {
         [void]$script:Grid.Rows.Add(
             $provider.Name,
-            (Format-ProviderHealthCell -Provider $provider),
             (Format-Percent $provider.FiveHourRemainingPercent),
             (Format-GuiResetHours -Value $provider.FiveHourResetHours -Snapshot $script:Snapshot),
             (Format-Percent $provider.WeeklyRemainingPercent),
@@ -608,11 +610,10 @@ function Show-Dashboard {
 
     foreach ($column in @(
         @('Provider', 'Provider', 'AllCells', 'MiddleLeft'),
-        @('Health', 'Health', 'AllCells', 'MiddleCenter'),
         @('FiveHour', '5h quota', 'AllCells', 'MiddleRight'),
-        @('FiveHourReset', '5h reset', 'AllCells', 'MiddleCenter'),
+        @('FiveHourReset', '5h reset', 'AllCells', 'MiddleRight'),
         @('Weekly', '7d quota', 'AllCells', 'MiddleRight'),
-        @('WeeklyReset', '7d reset', 'AllCells', 'MiddleCenter'),
+        @('WeeklyReset', '7d reset', 'AllCells', 'MiddleRight'),
         @('LastEvent', 'Last update', 'AllCells', 'MiddleCenter'),
         @('Status', 'Status', 'Fill', 'MiddleLeft')
     )) {
