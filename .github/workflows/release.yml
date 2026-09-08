@@ -40,10 +40,17 @@ jobs:
         $tag = $env:GITHUB_REF_NAME
         gh release create $tag bin/TokenMonitor.exe --title "$tag" --notes "Automated release for $tag"
 
-    - name: Delete this workflow run to free Actions storage
-      continue-on-error: true
+    - name: Clean up old workflow runs to free Actions storage
       if: always()
+      shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      shell: powershell
-      run: gh run delete $env:GITHUB_RUN_ID -R $env:GITHUB_REPOSITORY
+      run: |
+        $runs = gh run list --repo ${{ github.repository }} --workflow=release.yml --status=completed --json databaseId | ConvertFrom-Json
+        foreach ($r in $runs) {
+          $id = "$($r.databaseId)"
+          if ($id -and $id -ne "${{ github.run_id }}") {
+            Write-Host "Deleting old completed run: $id"
+            gh run delete $id --repo ${{ github.repository }}
+          }
+        }
