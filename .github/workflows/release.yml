@@ -41,6 +41,7 @@ jobs:
         gh release create $tag bin/TokenMonitor.exe --title "$tag" --notes "Automated release for $tag"
 
     - name: Delete this workflow run to free Actions storage
+      continue-on-error: true
       if: always()
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
