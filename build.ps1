@@ -1,4 +1,4 @@
-﻿# TokenMonitor Build Script
+# TokenMonitor Build Script
 # This script combines TokenUsage.psm1 and TokenMonitor.ps1 into a single standalone 
 # script, then compiles it using ps2exe with the custom icon to prevent any file extraction.
 
@@ -78,7 +78,7 @@ $compileArgs = @{
     noConsole = $true
     title = 'TokenMonitor'
     product = 'TokenMonitor'
-    version = '1.4.12'
+    version = '1.4.13'
 }
 
 if ($null -ne $iconPath -and (Test-Path -LiteralPath $iconPath)) {
