@@ -51,6 +51,7 @@ $usageContent = Get-Content -LiteralPath $usageModulePath -Raw
 # 4. Merge content
 Write-Host "Merging TokenUsage.psm1 into TokenMonitor.ps1..."
 $cleanUsageContent = $usageContent -replace '(?s)(?m)^[ \t]*Export-ModuleMember.*$', ''
+$cleanUsageContent = $usageContent -replace '(?s)Export-ModuleMember.*$', ''
 
 
 # Find the block where Import-Module is performed and replace it with the module content
@@ -78,7 +79,7 @@ $compileArgs = @{
     noConsole = $true
     title = 'TokenMonitor'
     product = 'TokenMonitor'
-    version = '1.4.13'
+    version = '1.5.0'
 }
 
 if ($null -ne $iconPath -and (Test-Path -LiteralPath $iconPath)) {

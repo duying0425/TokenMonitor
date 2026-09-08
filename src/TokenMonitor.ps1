@@ -424,56 +424,85 @@ function Update-DynamicTrayIcon {
         return
     }
 
-    # Find all enabled providers
+    # Find all enabled providers (matches Format-TokenUsageTooltip ordering)
     $enabledProviders = @()
     if ($null -ne $Snapshot) {
         $enabledProviders = @($Snapshot.Providers) | Where-Object { $_.Enabled }
     }
 
     # Scale the bitmap size according to UI scaling to prevent blurry icons on high DPI
-    $size = [int](16 * $script:UiScale)
-    if ($size -lt 16) { $size = 16 }
+    $targetSize = 16
+    try {
+        $targetSize = [System.Windows.Forms.SystemInformation]::SmallIconSize.Width
+    } catch {}
+    $scaledSize = [int][Math]::Round(16 * $script:UiScale)
+    $size = [Math]::Max(16, [Math]::Max($targetSize, $scaledSize))
 
     $bmp = New-Object System.Drawing.Bitmap $size, $size
     $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
     $g.Clear([System.Drawing.Color]::Transparent)
 
-    $margin = 2.0 * $script:UiScale
-    $penWidth = 2.2 * $script:UiScale
-    $drawSize = $size - (2.0 * $margin)
-
     if ($enabledProviders.Count -eq 0) {
-        # If no providers or loading, draw our beautiful default application icon or a scaled neutral gray ring
+        # If no providers or loading, draw application icon or neutral placeholder
         if ($null -ne $script:AppIcon -and $script:AppIcon -ne [System.Drawing.SystemIcons]::Information) {
             $g.DrawIcon($script:AppIcon, 0, 0)
         } else {
-            $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(100, 100, 100)), $penWidth
-            $g.DrawEllipse($pen, $margin, $margin, $drawSize, $drawSize)
-            $pen.Dispose()
+            $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(120, 120, 120))
+            $g.FillRectangle($brush, 2, 2, 5, 5)
+            $g.FillRectangle($brush, 9, 2, 5, 5)
+            $g.FillRectangle($brush, 2, 9, 5, 5)
+            $g.FillRectangle($brush, 9, 9, 5, 5)
+            $brush.Dispose()
         }
     }
     else {
-        # Divide 360 degrees among enabled providers
-        $count = $enabledProviders.Count
-        $anglePerProvider = 360.0 / $count
-        # Gap size between segments (in degrees)
-        $gap = if ($count -gt 1) { 15.0 } else { 0.0 }
-        $sweepAngle = $anglePerProvider - $gap
+        # Two-row grid: Row 0 is 5h, Row 1 is 7d
+        # Columns correspond to enabled providers in tooltip order
+        $rows = 2
+        $cols = $enabledProviders.Count
+        $scaleRatio = $size / 16.0
 
-        # Start drawing from the top (270 degrees)
-        $startAngle = 270.0
+        # Vertical layout (2 rows separated by gapY)
+        $gapY = [Math]::Max(1, [int][Math]::Round(2.0 * $scaleRatio))
+        $availH = $size - $gapY
+        $blockH = [Math]::Max(2, [int][Math]::Floor(($availH - [int][Math]::Round(3.0 * $scaleRatio)) / $rows))
+        $totalH = ($rows * $blockH) + $gapY
+        $startY = [int][Math]::Floor(($size - $totalH) / 2.0)
 
-        foreach ($provider in $enabledProviders) {
-            $color = Get-HealthStateColor -HealthState $provider.HealthState
+        # Horizontal layout (N columns separated by gapX)
+        $baseGapX = if ($cols -eq 2) { 2.0 } else { 1.0 }
+        $gapX = if ($cols -gt 1) { [Math]::Max(1, [int][Math]::Round($baseGapX * $scaleRatio)) } else { 0 }
+        $totalGapsX = ($cols - 1) * $gapX
 
-            # Draw the segment
-            $pen = New-Object System.Drawing.Pen $color, $penWidth
-            $g.DrawArc($pen, $margin, $margin, $drawSize, $drawSize, $startAngle, $sweepAngle)
-            $pen.Dispose()
+        $targetMarginX = if ($cols -ge 4) { 0 } else { [Math]::Max(1, [int][Math]::Round(1.0 * $scaleRatio)) }
+        $availW = $size - $totalGapsX - (2 * $targetMarginX)
+        $blockW = [Math]::Max(2, [int][Math]::Floor($availW / $cols))
+        if ($cols -eq 1) {
+            $blockW = [Math]::Min($blockW, [int][Math]::Round(10.0 * $scaleRatio))
+        }
+        $totalW = ($cols * $blockW) + $totalGapsX
+        $startX = [int][Math]::Floor(($size - $totalW) / 2.0)
 
-            # Advance to the next provider segment
-            $startAngle += $anglePerProvider
+        for ($c = 0; $c -lt $cols; $c++) {
+            $provider = $enabledProviders[$c]
+            $x = $startX + $c * ($blockW + $gapX)
+
+            # Row 0: 5h health state
+            $state5h = Get-WindowHealthState -Provider $provider -Window '5h'
+            $color5h = Get-HealthStateColor -HealthState $state5h
+            $brush5h = New-Object System.Drawing.SolidBrush $color5h
+            $y0 = $startY
+            $g.FillRectangle($brush5h, $x, $y0, $blockW, $blockH)
+            $brush5h.Dispose()
+
+            # Row 1: 7d health state
+            $state7d = Get-WindowHealthState -Provider $provider -Window '7d'
+            $color7d = Get-HealthStateColor -HealthState $state7d
+            $brush7d = New-Object System.Drawing.SolidBrush $color7d
+            $y1 = $startY + $blockH + $gapY
+            $g.FillRectangle($brush7d, $x, $y1, $blockW, $blockH)
+            $brush7d.Dispose()
         }
     }
 

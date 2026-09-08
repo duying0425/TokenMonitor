@@ -1735,6 +1735,74 @@ function Get-ProviderTokenHealth {
     }
 }
 
+function Get-WindowHealthState {
+    param(
+        $Provider,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('5h', '7d')]
+        [string]$Window
+    )
+
+    if ($null -eq $Provider) {
+        return 'unknown'
+    }
+
+    $enabled = $true
+    if ($Provider -is [System.Collections.IDictionary]) {
+        if ($Provider.Contains('Enabled')) { $enabled = [bool]$Provider['Enabled'] }
+    } elseif (Get-Member -InputObject $Provider -Name Enabled -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+        $enabled = [bool]$Provider.Enabled
+    }
+
+    if (-not $enabled) {
+        return 'disabled'
+    }
+
+    $weeklyPercent = if ($Provider -is [System.Collections.IDictionary]) {
+        $Provider['WeeklyRemainingPercent']
+    } elseif (Get-Member -InputObject $Provider -Name WeeklyRemainingPercent -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+        $Provider.WeeklyRemainingPercent
+    } else {
+        $null
+    }
+
+    # If weekly quota is exhausted, 5h is also exhausted
+    if ($Window -eq '5h' -and $null -ne $weeklyPercent -and [double]$weeklyPercent -le 0) {
+        return 'empty'
+    }
+
+    $percent = if ($Window -eq '5h') {
+        if ($Provider -is [System.Collections.IDictionary]) {
+            $Provider['FiveHourRemainingPercent']
+        } elseif (Get-Member -InputObject $Provider -Name FiveHourRemainingPercent -MemberType NoteProperty -ErrorAction SilentlyContinue) {
+            $Provider.FiveHourRemainingPercent
+        } else {
+            $null
+        }
+    } else {
+        $weeklyPercent
+    }
+
+    if ($null -eq $percent) {
+        return 'unknown'
+    }
+
+    $val = [Math]::Max(0.0, [Math]::Min(100.0, [double]$percent))
+    if ($val -le 0) {
+        return 'empty'
+    }
+
+    if ($Window -eq '5h') {
+        if ($val -le 15) { return 'low' }
+        if ($val -le 50) { return 'medium' }
+        return 'good'
+    } else {
+        if ($val -le 10) { return 'low' }
+        if ($val -le 50) { return 'medium' }
+        return 'good'
+    }
+}
+
 function Get-TokenWindowUsage {
     param(
         [Parameter(Mandatory = $true)]$Events,
@@ -2451,5 +2519,6 @@ Export-ModuleMember -Function `
     Format-TokenCount, `
     Format-Percent, `
     Format-ResetHours, `
-    Format-TokenUsageTooltip
+    Format-TokenUsageTooltip, `
+    Get-WindowHealthState
 

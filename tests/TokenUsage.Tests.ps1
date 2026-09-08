@@ -259,6 +259,39 @@ InModuleScope TokenUsage {
             Test-TokenProviderStatusOk -Status "Command OK" | Should Be $true
             Test-TokenProviderStatusOk -Status "Error 500" | Should Be $false
         }
+        It "Calculates window health state for 5h and 7d correctly" {
+            $pGood = [pscustomobject]@{ Enabled = $true; FiveHourRemainingPercent = 80.0; WeeklyRemainingPercent = 90.0 }
+            Get-WindowHealthState -Provider $pGood -Window '5h' | Should Be "good"
+            Get-WindowHealthState -Provider $pGood -Window '7d' | Should Be "good"
+
+            $pMid = [pscustomobject]@{ Enabled = $true; FiveHourRemainingPercent = 40.0; WeeklyRemainingPercent = 30.0 }
+            Get-WindowHealthState -Provider $pMid -Window '5h' | Should Be "medium"
+            Get-WindowHealthState -Provider $pMid -Window '7d' | Should Be "medium"
+
+            $pLow = [pscustomobject]@{ Enabled = $true; FiveHourRemainingPercent = 12.0; WeeklyRemainingPercent = 8.0 }
+            Get-WindowHealthState -Provider $pLow -Window '5h' | Should Be "low"
+            Get-WindowHealthState -Provider $pLow -Window '7d' | Should Be "low"
+
+            $pEmpty = [pscustomobject]@{ Enabled = $true; FiveHourRemainingPercent = 0.0; WeeklyRemainingPercent = 0.0 }
+            Get-WindowHealthState -Provider $pEmpty -Window '5h' | Should Be "empty"
+            Get-WindowHealthState -Provider $pEmpty -Window '7d' | Should Be "empty"
+
+            # 7d exhausted forces 5h to be empty
+            $pWeeklyExhausted = [pscustomobject]@{ Enabled = $true; FiveHourRemainingPercent = 50.0; WeeklyRemainingPercent = 0.0 }
+            Get-WindowHealthState -Provider $pWeeklyExhausted -Window '5h' | Should Be "empty"
+            Get-WindowHealthState -Provider $pWeeklyExhausted -Window '7d' | Should Be "empty"
+
+            # Disabled
+            $pDisabled = [pscustomobject]@{ Enabled = $false; FiveHourRemainingPercent = 80.0; WeeklyRemainingPercent = 90.0 }
+            Get-WindowHealthState -Provider $pDisabled -Window '5h' | Should Be "disabled"
+            Get-WindowHealthState -Provider $pDisabled -Window '7d' | Should Be "disabled"
+
+            # Null / Unknown
+            $pUnknown = [pscustomobject]@{ Enabled = $true; FiveHourRemainingPercent = $null; WeeklyRemainingPercent = $null }
+            Get-WindowHealthState -Provider $pUnknown -Window '5h' | Should Be "unknown"
+            Get-WindowHealthState -Provider $pUnknown -Window '7d' | Should Be "unknown"
+            Get-WindowHealthState -Provider $null -Window '5h' | Should Be "unknown"
+        }
     }
 
     Describe "TokenUsage Window Usage Aggregation" {
