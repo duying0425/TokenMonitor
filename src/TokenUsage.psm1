@@ -756,6 +756,10 @@ function Save-TokenMonitorSettings {
         [string]$Path = (Get-TokenMonitorSettingsPath)
     )
 
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        $Path = Get-TokenMonitorSettingsPath
+    }
+
     $dir = Split-Path -Parent $Path
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -767,6 +771,10 @@ function Save-TokenMonitorSettings {
 
 function Read-TokenMonitorSettings {
     param([string]$Path = (Get-TokenMonitorSettingsPath))
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        $Path = Get-TokenMonitorSettingsPath
+    }
 
     Save-ClaudeCookieHelper
 
@@ -2378,8 +2386,11 @@ function Format-TooltipProviderName {
         default { $Provider.Name }
     }
 
-    if (((Get-Member -InputObject $Provider -Name IsEstimatedFromCache -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $Provider.IsEstimatedFromCache) -or
-        (-not (Test-TokenProviderStatusOk -Status $Provider.Status))) {
+    $isEstimated = (Get-Member -InputObject $Provider -Name IsEstimatedFromCache -MemberType NoteProperty -ErrorAction SilentlyContinue) -and $Provider.IsEstimatedFromCache
+    $hasStatus = Get-Member -InputObject $Provider -Name Status -MemberType NoteProperty -ErrorAction SilentlyContinue
+    $isStatusOk = if ($hasStatus) { Test-TokenProviderStatusOk -Status $Provider.Status } else { $true }
+
+    if ($isEstimated -or (-not $isStatusOk)) {
         return ('{0}(E)' -f $shortName)
     }
 

@@ -419,5 +419,74 @@ InModuleScope TokenUsage {
                 if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force }
             }
         }
+
+        It "Save-TokenMonitorSettings and Read-TokenMonitorSettings handle empty string or null path safely" {
+            $tempFile = [System.IO.Path]::GetTempFileName()
+            try {
+                Mock Get-TokenMonitorSettingsPath { $tempFile }
+                $settings = New-DefaultTokenSettings
+                $settings['RefreshSeconds'] = 75
+
+                # Empty string path should fall back to Mock Get-TokenMonitorSettingsPath
+                { Save-TokenMonitorSettings -Settings $settings -Path "" } | Should Not Throw
+                $loaded = Read-TokenMonitorSettings -Path ""
+                $loaded.RefreshSeconds | Should Be 75
+
+                # Null path should fall back to Mock Get-TokenMonitorSettingsPath
+                { Save-TokenMonitorSettings -Settings $settings -Path $null } | Should Not Throw
+                $loaded2 = Read-TokenMonitorSettings -Path $null
+                $loaded2.RefreshSeconds | Should Be 75
+            }
+            finally {
+                if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force }
+            }
+        }
+
+        It "Preserves Enabled = false when saving and reading settings" {
+            $tempFile = [System.IO.Path]::GetTempFileName()
+            try {
+                $settings = New-DefaultTokenSettings
+                $claude = @($settings.Providers) | Where-Object { $_.Id -eq 'claude' } | Select-Object -First 1
+                $claude['Enabled'] = $false
+
+                Save-TokenMonitorSettings -Settings $settings -Path $tempFile
+                $loaded = Read-TokenMonitorSettings -Path $tempFile
+
+                $loadedClaude = @($loaded.Providers) | Where-Object { $_.Id -eq 'claude' } | Select-Object -First 1
+                $loadedClaude.Enabled | Should Be $false
+            }
+            finally {
+                if (Test-Path -LiteralPath $tempFile) { Remove-Item -LiteralPath $tempFile -Force }
+            }
+        }
+
+        It "Format-TokenUsageTooltip ignores disabled providers" {
+            $snapshot = [pscustomobject]@{
+                Providers = @(
+                    [pscustomobject]@{
+                        Id = 'antigravity'
+                        Name = 'Antigravity'
+                        Enabled = $true
+                        FiveHourRemainingPercent = 80.0
+                        FiveHourResetHours = 2.0
+                        WeeklyRemainingPercent = 90.0
+                        WeeklyResetHours = 48.0
+                    },
+                    [pscustomobject]@{
+                        Id = 'claude'
+                        Name = 'Claude Code'
+                        Enabled = $false
+                        FiveHourRemainingPercent = 50.0
+                        FiveHourResetHours = 1.0
+                        WeeklyRemainingPercent = 50.0
+                        WeeklyResetHours = 24.0
+                    }
+                )
+            }
+
+            $tooltip = Format-TokenUsageTooltip -Snapshot $snapshot
+            $tooltip | Should Not Match 'Claude'
+            $tooltip | Should Match 'Ag'
+        }
     }
 }

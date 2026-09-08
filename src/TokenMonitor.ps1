@@ -25,6 +25,11 @@ Import-Module $modulePath -Force
 $script:SettingsPath = Get-TokenMonitorSettingsPath
 $script:Settings = Read-TokenMonitorSettings -Path $script:SettingsPath
 
+function Open-TokenMonitorConfigFile {
+    $path = if (-not [string]::IsNullOrWhiteSpace($script:SettingsPath)) { $script:SettingsPath } else { Get-TokenMonitorSettingsPath }
+    Invoke-Item -LiteralPath $path
+}
+
 function Format-ProviderHealthCell {
     param($Provider)
 
@@ -475,6 +480,12 @@ function Update-DynamicTrayIcon {
     # Convert to Icon
     $hIcon = $bmp.GetHicon()
     $newIcon = [System.Drawing.Icon]::FromHandle($hIcon)
+    $tempIcon = [System.Drawing.Icon]::FromHandle($hIcon)
+    $newIcon = [System.Drawing.Icon]$tempIcon.Clone()
+    $tempIcon.Dispose()
+    if ($null -ne $script:User32) {
+        [void]$script:User32::DestroyIcon($hIcon)
+    }
 
     $oldIcon = $script:NotifyIcon.Icon
     $script:NotifyIcon.Icon = $newIcon
@@ -522,6 +533,9 @@ function Update-DashboardGrid {
 
 function Refresh-Usage {
     try {
+        if ([string]::IsNullOrWhiteSpace($script:SettingsPath)) {
+            $script:SettingsPath = Get-TokenMonitorSettingsPath
+        }
         $script:Settings = Read-TokenMonitorSettings -Path $script:SettingsPath
         $script:Snapshot = Get-TokenUsageSnapshot -Settings $script:Settings
         if ($null -ne $script:NotifyIcon) {
@@ -586,6 +600,7 @@ function Show-Dashboard {
     $openConfigButton.Left = Scale-UiValue 212
     $openConfigButton.Top = Scale-UiValue 8
     $openConfigButton.Add_Click({ Invoke-Item -LiteralPath $script:SettingsPath })
+    $openConfigButton.Add_Click({ Open-TokenMonitorConfigFile })
     Style-FlatButton -Button $openConfigButton
     $panel.Controls.Add($openConfigButton)
 
@@ -674,6 +689,12 @@ function Show-Settings {
     }
 
     $settings = Read-TokenMonitorSettings -Path $script:SettingsPath
+    $settingsPath = $script:SettingsPath
+    if ([string]::IsNullOrWhiteSpace($settingsPath)) {
+        $settingsPath = Get-TokenMonitorSettingsPath
+    }
+
+    $settings = Read-TokenMonitorSettings -Path $settingsPath
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = 'TokenMonitor Settings'
@@ -736,6 +757,12 @@ function Show-Settings {
     $grid.AllowUserToResizeRows = $false
     Style-DataGridView -Grid $grid
 
+    $grid.Add_CurrentCellDirtyStateChanged({
+        if ($this.IsCurrentCellDirty) {
+            [void]$this.CommitEdit([System.Windows.Forms.DataGridViewDataErrorContexts]::Commit)
+        }
+    })
+
     $enabledCol = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
     $enabledCol.Name = 'Enabled'
     $enabledCol.HeaderText = 'Enabled'
@@ -786,11 +813,33 @@ function Show-Settings {
     $saveButton.Top = Scale-UiValue 10
     $saveButton.Add_Click({
         $grid.EndEdit()
+        try {
+            [void]$grid.CommitEdit([System.Windows.Forms.DataGridViewDataErrorContexts]::Commit)
+            $grid.EndEdit()
 
         $providers = New-Object System.Collections.Generic.List[object]
         foreach ($row in $grid.Rows) {
             if ($row.IsNewRow) {
                 continue
+            $providers = New-Object System.Collections.Generic.List[object]
+            foreach ($row in $grid.Rows) {
+                if ($row.IsNewRow) {
+                    continue
+                }
+                $enabledVal = $row.Cells['Enabled'].Value
+                $isEnabled = if ($null -eq $enabledVal) { $false } else { [bool]$enabledVal }
+
+                $providers.Add([ordered]@{
+                    Id = [string]$row.Cells['Id'].Value
+                    Name = [string]$row.Cells['Name'].Value
+                    Enabled = $isEnabled
+                    FiveHourLimit = (Parse-LongCell $row.Cells['FiveHourLimit'].Value)
+                    WeeklyLimit = (Parse-LongCell $row.Cells['WeeklyLimit'].Value)
+                    ScanRoots = @(Split-CellList $row.Cells['ScanRoots'].Value)
+                    FilePatterns = @(Split-CellList $row.Cells['FilePatterns'].Value)
+                    Command = [string]$row.Cells['Command'].Value
+                    CommandTimeoutSeconds = [int](Parse-LongCell $row.Cells['CommandTimeoutSeconds'].Value)
+                })
             }
             $providers.Add([ordered]@{
                 Id = [string]$row.Cells['Id'].Value
@@ -810,12 +859,25 @@ function Show-Settings {
             MaxFileSizeMB = [int]$maxFileInput.Value
             ShowStatusStrip = [bool]$settings.ShowStatusStrip
             Providers = @($providers.ToArray())
+            $newSettings = [ordered]@{
+                RefreshSeconds = [int]$refreshInput.Value
+                MaxFileSizeMB = [int]$maxFileInput.Value
+                ShowStatusStrip = [bool]$settings.ShowStatusStrip
+                Providers = @($providers.ToArray())
+            }
+
+            Save-TokenMonitorSettings -Settings $newSettings -Path $settingsPath
+            Refresh-Usage
+            $form.Close()
         }
 
         Save-TokenMonitorSettings -Settings $newSettings -Path $script:SettingsPath
         $script:Settings = Read-TokenMonitorSettings -Path $script:SettingsPath
         Refresh-Usage
         $form.Close()
+        catch {
+            [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'TokenMonitor Error', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        }
     }.GetNewClosure())
     Style-FlatButton -Button $saveButton -IsPrimary
     $bottom.Controls.Add($saveButton)
@@ -839,6 +901,7 @@ function Show-Settings {
     $openButton.Left = Scale-UiValue 212
     $openButton.Top = Scale-UiValue 10
     $openButton.Add_Click({ Invoke-Item -LiteralPath $script:SettingsPath })
+    $openButton.Add_Click({ Open-TokenMonitorConfigFile })
     Style-FlatButton -Button $openButton
     $bottom.Controls.Add($openButton)
 
@@ -849,6 +912,8 @@ function Show-Settings {
         if ($_.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
             $script:SettingsForm = $null
         }
+    $form.Add_FormClosed({
+        $script:SettingsForm = $null
     })
 
     $script:SettingsForm = $form
@@ -891,6 +956,7 @@ $contextMenu.Padding = New-Object System.Windows.Forms.Padding((Scale-UiValue 2)
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Refresh now' -OnClick { Refresh-Usage }))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Settings' -OnClick { Show-Settings }))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Open config' -OnClick { Invoke-Item -LiteralPath $script:SettingsPath }))
+[void]$contextMenu.Items.Add((New-MenuItem -Text 'Open config' -OnClick { Open-TokenMonitorConfigFile }))
 [void]$contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Exit' -OnClick { Exit-TokenMonitor }))
 $script:ContextMenu = $contextMenu
