@@ -479,7 +479,6 @@ function Update-DynamicTrayIcon {
 
     # Convert to Icon
     $hIcon = $bmp.GetHicon()
-    $newIcon = [System.Drawing.Icon]::FromHandle($hIcon)
     $tempIcon = [System.Drawing.Icon]::FromHandle($hIcon)
     $newIcon = [System.Drawing.Icon]$tempIcon.Clone()
     $tempIcon.Dispose()
@@ -496,10 +495,6 @@ function Update-DynamicTrayIcon {
     }
     $g.Dispose()
     $bmp.Dispose()
-
-    if ($null -ne $script:User32) {
-        [void]$script:User32::DestroyIcon($hIcon)
-    }
 }
 
 function Update-DashboardGrid {
@@ -531,23 +526,82 @@ function Update-DashboardGrid {
     }
 }
 
+$script:IsRefreshing = $false
+$script:WorkerPool = $null
+$script:AsyncWorker = $null
+$script:AsyncResult = $null
+$script:AsyncCheckTimer = $null
+$script:DashboardRefreshButton = $null
+
+function Get-TokenMonitorAllUsageFunctions {
+    $mod = Get-Module TokenUsage
+    if ($null -ne $mod) {
+        return @(& $mod { Get-ChildItem Function:\ })
+    }
+    return @(Get-ChildItem Function:\*)
+}
+
+function New-TokenMonitorWorkerPool {
+    $iss = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+    foreach ($fn in (Get-TokenMonitorAllUsageFunctions)) {
+        if ($fn.CommandType -eq 'Function' -and $fn.Name.Length -gt 2 -and -not ($fn.Name -match '^[A-Z]:$')) {
+            try {
+                $entry = New-Object System.Management.Automation.Runspaces.SessionStateFunctionEntry($fn.Name, $fn.Definition)
+                $iss.Commands.Add($entry)
+            } catch {}
+        }
+    }
+
+    $pool = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspacePool(1, 1, $iss, $Host)
+    $pool.Open()
+    return $pool
+}
+
 function Refresh-Usage {
+    if ($script:IsRefreshing) {
+        return
+    }
+
+    $script:IsRefreshing = $true
+
+    if ($null -ne $script:StatusLabel) {
+        $script:StatusLabel.Text = 'Refreshing...'
+    }
+    if ($null -ne $script:DashboardRefreshButton -and -not $script:DashboardRefreshButton.IsDisposed) {
+        $script:DashboardRefreshButton.Enabled = $false
+    }
+
     try {
         if ([string]::IsNullOrWhiteSpace($script:SettingsPath)) {
             $script:SettingsPath = Get-TokenMonitorSettingsPath
         }
         $script:Settings = Read-TokenMonitorSettings -Path $script:SettingsPath
-        $script:Snapshot = Get-TokenUsageSnapshot -Settings $script:Settings
-        if ($null -ne $script:NotifyIcon) {
-            $script:NotifyIcon.Text = Format-TokenUsageTooltip -Snapshot $script:Snapshot
-            Update-DynamicTrayIcon -Snapshot $script:Snapshot
+
+        if ($null -eq $script:WorkerPool) {
+            $script:WorkerPool = New-TokenMonitorWorkerPool
         }
-        Update-DashboardGrid
+
+        $ps = [PowerShell]::Create()
+        $ps.RunspacePool = $script:WorkerPool
+        [void]$ps.AddCommand('Get-TokenUsageSnapshot').AddParameter('Settings', $script:Settings)
+
+        $script:AsyncWorker = $ps
+        $script:AsyncResult = $ps.BeginInvoke()
+        if ($null -ne $script:AsyncCheckTimer) {
+            $script:AsyncCheckTimer.Start()
+        }
     }
     catch {
+        $script:IsRefreshing = $false
+        if ($null -ne $script:DashboardRefreshButton -and -not $script:DashboardRefreshButton.IsDisposed) {
+            $script:DashboardRefreshButton.Enabled = $true
+        }
         if ($null -ne $script:NotifyIcon) {
             $script:NotifyIcon.Text = 'TokenMonitor refresh failed'
             $script:NotifyIcon.ShowBalloonTip(3000, 'TokenMonitor', $_.Exception.Message, [System.Windows.Forms.ToolTipIcon]::Warning)
+        }
+        if ($null -ne $script:StatusLabel) {
+            $script:StatusLabel.Text = 'Refresh failed: ' + $_.Exception.Message
         }
     }
 }
@@ -580,6 +634,7 @@ function Show-Dashboard {
     $refreshButton.Left = Scale-UiValue 12
     $refreshButton.Top = Scale-UiValue 8
     $refreshButton.Add_Click({ Refresh-Usage })
+    $refreshButton.Enabled = -not $script:IsRefreshing
     Style-FlatButton -Button $refreshButton -IsPrimary
     $panel.Controls.Add($refreshButton)
 
@@ -599,7 +654,6 @@ function Show-Dashboard {
     $openConfigButton.Height = Scale-UiValue 28
     $openConfigButton.Left = Scale-UiValue 212
     $openConfigButton.Top = Scale-UiValue 8
-    $openConfigButton.Add_Click({ Invoke-Item -LiteralPath $script:SettingsPath })
     $openConfigButton.Add_Click({ Open-TokenMonitorConfigFile })
     Style-FlatButton -Button $openConfigButton
     $panel.Controls.Add($openConfigButton)
@@ -654,6 +708,7 @@ function Show-Dashboard {
     $script:DashboardForm = $form
     $script:Grid = $grid
     $script:StatusLabel = $status
+    $script:DashboardRefreshButton = $refreshButton
     $form.Show()
     $form.Activate()
     $form.Refresh()
@@ -812,15 +867,10 @@ function Show-Settings {
     $saveButton.Left = Scale-UiValue 12
     $saveButton.Top = Scale-UiValue 10
     $saveButton.Add_Click({
-        $grid.EndEdit()
         try {
             [void]$grid.CommitEdit([System.Windows.Forms.DataGridViewDataErrorContexts]::Commit)
             $grid.EndEdit()
 
-        $providers = New-Object System.Collections.Generic.List[object]
-        foreach ($row in $grid.Rows) {
-            if ($row.IsNewRow) {
-                continue
             $providers = New-Object System.Collections.Generic.List[object]
             foreach ($row in $grid.Rows) {
                 if ($row.IsNewRow) {
@@ -841,24 +891,7 @@ function Show-Settings {
                     CommandTimeoutSeconds = [int](Parse-LongCell $row.Cells['CommandTimeoutSeconds'].Value)
                 })
             }
-            $providers.Add([ordered]@{
-                Id = [string]$row.Cells['Id'].Value
-                Name = [string]$row.Cells['Name'].Value
-                Enabled = [bool]$row.Cells['Enabled'].Value
-                FiveHourLimit = (Parse-LongCell $row.Cells['FiveHourLimit'].Value)
-                WeeklyLimit = (Parse-LongCell $row.Cells['WeeklyLimit'].Value)
-                ScanRoots = @(Split-CellList $row.Cells['ScanRoots'].Value)
-                FilePatterns = @(Split-CellList $row.Cells['FilePatterns'].Value)
-                Command = [string]$row.Cells['Command'].Value
-                CommandTimeoutSeconds = [int](Parse-LongCell $row.Cells['CommandTimeoutSeconds'].Value)
-            })
-        }
 
-        $newSettings = [ordered]@{
-            RefreshSeconds = [int]$refreshInput.Value
-            MaxFileSizeMB = [int]$maxFileInput.Value
-            ShowStatusStrip = [bool]$settings.ShowStatusStrip
-            Providers = @($providers.ToArray())
             $newSettings = [ordered]@{
                 RefreshSeconds = [int]$refreshInput.Value
                 MaxFileSizeMB = [int]$maxFileInput.Value
@@ -870,11 +903,6 @@ function Show-Settings {
             Refresh-Usage
             $form.Close()
         }
-
-        Save-TokenMonitorSettings -Settings $newSettings -Path $script:SettingsPath
-        $script:Settings = Read-TokenMonitorSettings -Path $script:SettingsPath
-        Refresh-Usage
-        $form.Close()
         catch {
             [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'TokenMonitor Error', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         }
@@ -900,7 +928,6 @@ function Show-Settings {
     $openButton.Height = Scale-UiValue 28
     $openButton.Left = Scale-UiValue 212
     $openButton.Top = Scale-UiValue 10
-    $openButton.Add_Click({ Invoke-Item -LiteralPath $script:SettingsPath })
     $openButton.Add_Click({ Open-TokenMonitorConfigFile })
     Style-FlatButton -Button $openButton
     $bottom.Controls.Add($openButton)
@@ -908,10 +935,6 @@ function Show-Settings {
     $form.Controls.Add($grid)
     $form.Controls.Add($top)
     $form.Controls.Add($bottom)
-    $form.Add_FormClosing({
-        if ($_.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
-            $script:SettingsForm = $null
-        }
     $form.Add_FormClosed({
         $script:SettingsForm = $null
     })
@@ -922,6 +945,20 @@ function Show-Settings {
 }
 
 function Dispose-TokenMonitorResources {
+    if ($null -ne $script:AsyncCheckTimer) {
+        try { $script:AsyncCheckTimer.Stop() } catch {}
+        try { $script:AsyncCheckTimer.Dispose() } catch {}
+        $script:AsyncCheckTimer = $null
+    }
+    if ($null -ne $script:AsyncWorker) {
+        try { $script:AsyncWorker.Dispose() } catch {}
+        $script:AsyncWorker = $null
+    }
+    if ($null -ne $script:WorkerPool) {
+        try { $script:WorkerPool.Close() } catch {}
+        try { $script:WorkerPool.Dispose() } catch {}
+        $script:WorkerPool = $null
+    }
     if ($null -ne $script:RefreshTimer) {
         try { $script:RefreshTimer.Stop() } catch {}
         try { $script:RefreshTimer.Dispose() } catch {}
@@ -955,7 +992,6 @@ $contextMenu.Padding = New-Object System.Windows.Forms.Padding((Scale-UiValue 2)
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Dashboard' -OnClick { Show-Dashboard }))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Refresh now' -OnClick { Refresh-Usage }))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Settings' -OnClick { Show-Settings }))
-[void]$contextMenu.Items.Add((New-MenuItem -Text 'Open config' -OnClick { Invoke-Item -LiteralPath $script:SettingsPath }))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Open config' -OnClick { Open-TokenMonitorConfigFile }))
 [void]$contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 [void]$contextMenu.Items.Add((New-MenuItem -Text 'Exit' -OnClick { Exit-TokenMonitor }))
@@ -968,6 +1004,51 @@ $notify.ContextMenuStrip = $contextMenu
 $notify.Text = 'TokenMonitor'
 $notify.Add_DoubleClick({ Show-Dashboard })
 $script:NotifyIcon = $notify
+
+$asyncCheckTimer = New-Object System.Windows.Forms.Timer
+$asyncCheckTimer.Interval = 100
+$asyncCheckTimer.Add_Tick({
+    if ($null -eq $script:AsyncResult) {
+        $script:AsyncCheckTimer.Stop()
+        return
+    }
+
+    if ($script:AsyncResult.IsCompleted) {
+        $script:AsyncCheckTimer.Stop()
+        try {
+            $results = $script:AsyncWorker.EndInvoke($script:AsyncResult)
+            if ($null -ne $results -and $results.Count -gt 0) {
+                $script:Snapshot = $results[0]
+                if ($null -ne $script:NotifyIcon) {
+                    $script:NotifyIcon.Text = Format-TokenUsageTooltip -Snapshot $script:Snapshot
+                    Update-DynamicTrayIcon -Snapshot $script:Snapshot
+                }
+                Update-DashboardGrid
+            }
+        }
+        catch {
+            if ($null -ne $script:NotifyIcon) {
+                $script:NotifyIcon.Text = 'TokenMonitor refresh failed'
+                $script:NotifyIcon.ShowBalloonTip(3000, 'TokenMonitor', $_.Exception.Message, [System.Windows.Forms.ToolTipIcon]::Warning)
+            }
+            if ($null -ne $script:StatusLabel) {
+                $script:StatusLabel.Text = 'Refresh failed: ' + $_.Exception.Message
+            }
+        }
+        finally {
+            if ($null -ne $script:AsyncWorker) {
+                try { $script:AsyncWorker.Dispose() } catch {}
+                $script:AsyncWorker = $null
+            }
+            $script:AsyncResult = $null
+            $script:IsRefreshing = $false
+            if ($null -ne $script:DashboardRefreshButton -and -not $script:DashboardRefreshButton.IsDisposed) {
+                $script:DashboardRefreshButton.Enabled = $true
+            }
+        }
+    }
+})
+$script:AsyncCheckTimer = $asyncCheckTimer
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = [Math]::Max(10, [int]$script:Settings.RefreshSeconds) * 1000
